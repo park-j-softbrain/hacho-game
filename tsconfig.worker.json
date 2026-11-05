@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "tsBuildInfoFile": "./node_modules/.tmp/worker.tsbuildinfo",
+    "lib": ["es2022"],
+    "types": []
+  },
+  "include": ["worker", "shared", "worker-configuration.d.ts"]
+}

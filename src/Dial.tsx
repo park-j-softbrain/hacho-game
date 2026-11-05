@@ -1,0 +1,242 @@
+import { useId, useRef } from "preact/hooks";
+import { BANDS } from "../shared/game";
+
+// A half-circle dial: 0 at the left end, 100 at the right end. Drawn like a
+// two-ink risograph print: blue halftone track, pink scoring wedges that
+// overprint the blue, and slightly misregistered pink "plates" under the needle.
+const CX = 100;
+const CY = 100;
+const R = 94; // outer rim
+const RI = 46; // inner edge of the track
+
+function at(v: number, r: number): [number, number] {
+  const a = Math.PI * (1 - v / 100);
+  return [CX + r * Math.cos(a), CY - r * Math.sin(a)];
+}
+
+function wedge(from: number, to: number, r: number): string {
+  const [x1, y1] = at(Math.max(0, from), r);
+  const [x2, y2] = at(Math.min(100, to), r);
+  return `M${CX},${CY} L${x1},${y1} A${r},${r} 0 0 1 ${x2},${y2} Z`;
+}
+
+const TRACK = (() => {
+  const [ox, oy] = at(0, R);
+  const [ex, ey] = at(100, R);
+  const [ix, iy] = at(100, RI);
+  const [jx, jy] = at(0, RI);
+  return `M${ox},${oy} A${R},${R} 0 0 1 ${ex},${ey} L${ix},${iy} A${RI},${RI} 0 0 0 ${jx},${jy} Z`;
+})();
+
+const TICKS = (() => {
+  let major = "";
+  let minor = "";
+  for (let v = 0; v <= 100; v += 5) {
+    const [a, b] = at(v, R - 2);
+    const [c, d] = at(v, R - (v % 10 === 0 ? 9 : 6));
+    if (v % 10 === 0) major += `M${a},${b} L${c},${d} `;
+    else minor += `M${a},${b} L${c},${d} `;
+  }
+  return { major, minor };
+})();
+
+// hollow: a needle the table hasn't sent yet (admin view)
+export type Marker = { n: number; v: number; points?: number; hollow?: boolean };
+
+type Props = {
+  value?: number | null; // this table's needle
+  target?: number | null; // shows the scoring wedge
+  markers?: Marker[]; // every table's needle (projector / admin)
+  onChange?: (v: number) => void; // while dragging
+  onCommit?: (v: number) => void; // on release
+  disabled?: boolean;
+  label?: string;
+};
+
+export function Dial({ value, target, markers, onChange, onCommit, disabled, label }: Props) {
+  const svg = useRef<SVGSVGElement>(null);
+  const dragging = useRef(false);
+  const last = useRef<number | null>(null);
+  // Pattern ids must be unique when two dials share a page.
+  const id = useId().replace(/[^\w-]/g, "");
+  const interactive = !!onChange && !disabled;
+
+  const valueAt = (e: PointerEvent): number => {
+    const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(svg.current!.getScreenCTM()!.inverse());
+    let a = Math.atan2(CY - p.y, p.x - CX);
+    if (a < 0) a = p.x < CX ? Math.PI : 0; // below the dial: snap to the nearer end
+    return Math.round(100 * (1 - a / Math.PI));
+  };
+
+  const down = (e: PointerEvent) => {
+    if (!interactive) return;
+    dragging.current = true;
+    try {
+      (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    } catch {
+      // keep dragging without capture; the pointer just has to stay over the dial
+    }
+    last.current = valueAt(e);
+    onChange!(last.current);
+  };
+  const move = (e: PointerEvent) => {
+    if (!dragging.current) return;
+    last.current = valueAt(e);
+    onChange!(last.current);
+  };
+  const up = () => {
+    if (!dragging.current) return;
+    dragging.current = false;
+    if (last.current !== null) onCommit?.(last.current);
+  };
+
+  return (
+    <svg
+      ref={svg}
+      class={`dial${interactive ? " dial-live" : ""}`}
+      viewBox="-10 -10 220 120"
+      role="img"
+      aria-label={label ?? (value != null ? `ダイヤル。針は${value}の位置` : "ダイヤル")}
+      onPointerDown={down}
+      onPointerMove={move}
+      onPointerUp={up}
+      onPointerCancel={up}
+    >
+      <defs>
+        <pattern id={`${id}-track`} width="3.4" height="3.4" patternUnits="userSpaceOnUse" patternTransform="rotate(15)">
+          <circle class="ink-blue" cx="1.7" cy="1.7" r="0.62" />
+        </pattern>
+        <pattern id={`${id}-p2`} width="3" height="3" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <circle class="ink-pink" cx="1.5" cy="1.5" r="0.75" />
+        </pattern>
+        <pattern id={`${id}-p3`} width="3" height="3" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <circle class="ink-pink" cx="1.5" cy="1.5" r="1.25" />
+        </pattern>
+      </defs>
+      <path d={TRACK} fill={`url(#${id}-track)`} />
+      {target != null && <Wedge target={target} id={id} />}
+      <path class="dial-outline" d={TRACK} />
+      <path class="dial-tick" d={TICKS.major} />
+      <path class="dial-tick dial-tick-minor" d={TICKS.minor} />
+      {target != null && <TargetLine target={target} />}
+      {markers && <Markers markers={markers} />}
+      {value != null && <Needle v={value} />}
+      <circle class="dial-hub" cx={CX} cy={CY} r={8} />
+      <circle class="dial-hub-dot" cx={CX} cy={CY} r={3} />
+    </svg>
+  );
+}
+
+function Wedge({ target, id }: { target: number; id: string }) {
+  const w = (within: number) => wedge(target - within, target + within, R);
+  const [b4, b3, b2] = BANDS;
+  return (
+    <>
+      <g class="wedge">
+        <path d={w(b2.within)} fill={`url(#${id}-p2)`} />
+        <path d={w(b3.within)} fill={`url(#${id}-p3)`} />
+        <path class="ink-pink" d={w(b4.within)} />
+        {/* the blue plate's outline, printed a little off register */}
+        <path class="wedge-outline" d={w(b2.within)} transform="translate(-1.2 -0.8)" />
+      </g>
+      {BANDS.flatMap((b, i) => {
+        const inner = i === 0 ? 0 : BANDS[i - 1].within;
+        const offsets = i === 0 ? [0] : [-(inner + b.within) / 2, (inner + b.within) / 2];
+        return offsets
+          .map((o) => target + o)
+          .filter((v) => v >= 0 && v <= 100)
+          .map((v) => {
+            const [x, y] = at(v, R + 8); // just outside the rim, clear of the markers
+            return (
+              <g class={`band-label band-label-${b.points}`}>
+                <circle cx={x} cy={y} r={5} />
+                <text x={x} y={y}>
+                  {b.points}
+                </text>
+              </g>
+            );
+          });
+      })}
+    </>
+  );
+}
+
+function TargetLine({ target }: { target: number }) {
+  const [x1, y1] = at(target, 10);
+  const [x2, y2] = at(target, R + 3);
+  return <line class="target-line" x1={x1} y1={y1} x2={x2} y2={y2} />;
+}
+
+function Needle({ v }: { v: number }) {
+  const [x, y] = at(v, R + 2);
+  return (
+    <g class="needle">
+      <g class="needle-plate" transform="translate(1.4 1)">
+        <line x1={CX} y1={CY} x2={x} y2={y} />
+        <circle cx={x} cy={y} r={6} />
+      </g>
+      <line class="needle-ink" x1={CX} y1={CY} x2={x} y2={y} />
+      <circle class="needle-ink" cx={x} cy={y} r={6} />
+      <circle class="needle-dot" cx={x} cy={y} r={2.2} />
+    </g>
+  );
+}
+
+// Every table's needle, with its number at the tip. Each number goes on the
+// outermost ring where it clears the numbers already placed; with 20 tables
+// answering close together the dots shrink and use more rings.
+function Markers({ markers }: { markers: Marker[] }) {
+  const dense = markers.length > 12;
+  const dot = dense ? 4.8 : 5.6;
+  const rings = Array.from({ length: dense ? 6 : 5 }, (_, i) => R - 8 - i * (2 * dot + 1));
+  const done: { x: number; y: number }[] = [];
+  const placed = [...markers]
+    .sort((a, b) => a.v - b.v)
+    .map((m) => {
+      // the clearance from the nearest placed number, per ring
+      const room = rings.map((r) => {
+        const [x, y] = at(m.v, r);
+        return Math.min(Infinity, ...done.map((p) => Math.hypot(p.x - x, p.y - y)));
+      });
+      let ring = room.findIndex((d) => d >= 2 * dot + 0.6);
+      if (ring < 0) ring = room.indexOf(Math.max(...room)); // nowhere is clear: least overlap
+      const [x, y] = at(m.v, rings[ring]);
+      done.push({ x, y });
+      return { ...m, r: rings[ring] };
+    });
+  return (
+    <g class={`markers${dense ? " markers-dense" : ""}`}>
+      {placed.map((m) => {
+        const [hx, hy] = at(m.v, 9);
+        const [x, y] = at(m.v, m.r);
+        return <line class="marker-stem" x1={hx} y1={hy} x2={x} y2={y} />;
+      })}
+      {placed.map((m) => {
+        const [x, y] = at(m.v, m.r);
+        const kind = m.hollow ? " marker-hollow" : m.points === 4 ? " marker-hit" : "";
+        return (
+          <g class={`marker${kind}`}>
+            <circle class="marker-plate" cx={x + 1} cy={y + 0.8} r={dot} />
+            <circle class="marker-dot" cx={x} cy={y} r={dot} />
+            <text x={x} y={y}>
+              {m.n}
+            </text>
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
+export function Ends({ left, right }: { left: string; right: string }) {
+  return (
+    <div class="ends">
+      <span>{left}</span>
+      <span>{right}</span>
+    </div>
+  );
+}
+
+export function fmt(v: number): string {
+  return Number.isInteger(v) ? String(v) : v.toFixed(1);
+}

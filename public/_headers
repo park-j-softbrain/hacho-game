@@ -1,0 +1,8 @@
+# Served by Cloudflare with every page and file.
+# no-referrer: table pages carry their QR token in the URL; never pass it to other sites.
+# frame-ancestors / X-Frame-Options: other sites can't embed the admin page to trick clicks.
+/*
+  Referrer-Policy: no-referrer
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Content-Security-Policy: frame-ancestors 'none'

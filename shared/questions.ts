@@ -1,0 +1,99 @@
+import type { Question, QuestionInput } from "./game";
+
+// Loaded on first start. Replace them from the admin page (問題の読み込み).
+export const SAMPLE_QUESTIONS: QuestionInput[] = [
+  {
+    prompt: "日本の国土のうち、森林の割合は？",
+    left: "0%",
+    right: "100%",
+    target: 67,
+    comment: "国土の約3分の2（約67%）が森林です",
+  },
+  {
+    prompt: "地球の表面のうち、海の割合は？",
+    left: "0%",
+    right: "100%",
+    target: 71,
+    comment: "地球の表面の約71%が海です",
+  },
+  {
+    prompt: "富士山の高さは？",
+    left: "0m",
+    right: "5,000m",
+    target: 75.5,
+    comment: "3,776m（5,000mを100とすると75.5）",
+  },
+  {
+    prompt: "（サンプル）社員アンケート：みんなは朝型？夜型？",
+    left: "朝型",
+    right: "夜型",
+    target: 40,
+    comment: "事前アンケートの平均を正解にしてください",
+  },
+  {
+    prompt: "（サンプル）社長が好きなカレーの辛さは？",
+    left: "甘口",
+    right: "激辛",
+    target: 70,
+    comment: "社長に事前に聞いた答えを正解にしてください",
+  },
+];
+
+export const TSV_HEADER = ["お題", "左", "右", "正解(0-100)", "解説"];
+
+// Rows pasted from a spreadsheet (tab-separated) or CSV without quotes:
+// お題, 左, 右, 正解(0–100), 解説(任意). A header row is skipped. A JSON array also works.
+export function parseQuestions(text: string): { questions: QuestionInput[] } | { error: string } {
+  const body = text.trim();
+  if (!body) return { error: "問題が空です" };
+  if (body.startsWith("[")) return parseJson(body);
+
+  const sep = body.includes("\t") ? "\t" : ",";
+  const questions: QuestionInput[] = [];
+  let firstRow = true;
+  for (const [i, line] of body.split(/\r?\n/).entries()) {
+    if (!line.trim()) continue;
+    const [prompt = "", left = "", right = "", rawTarget = "", comment = ""] = line.split(sep).map((c) => c.trim());
+    const target = toTarget(rawTarget);
+    const isHeader = firstRow && target === null;
+    firstRow = false;
+    if (isHeader) continue;
+    if (!prompt || !left || !right) return { error: `${i + 1}行目: お題・左・右の3つを入れてください` };
+    if (target === null) return { error: `${i + 1}行目: 正解（4列目）は0〜100の数字にしてください` };
+    questions.push({ prompt, left, right, target, ...(comment ? { comment } : {}) });
+  }
+  if (questions.length === 0) return { error: "問題が1つもありません" };
+  return { questions };
+}
+
+function parseJson(body: string): { questions: QuestionInput[] } | { error: string } {
+  let rows: unknown;
+  try {
+    rows = JSON.parse(body);
+  } catch {
+    return { error: "JSONとして読み込めませんでした" };
+  }
+  if (!Array.isArray(rows) || rows.length === 0) return { error: "問題が1つもありません" };
+  const questions: QuestionInput[] = [];
+  for (const [i, r] of rows.entries()) {
+    const target = toTarget(String(r?.target ?? ""));
+    if (!r?.prompt || !r?.left || !r?.right || target === null) {
+      return { error: `${i + 1}問目: prompt・left・right・target(0〜100) が必要です` };
+    }
+    questions.push({ prompt: r.prompt, left: r.left, right: r.right, target, ...(r.comment ? { comment: r.comment } : {}) });
+  }
+  return { questions };
+}
+
+// Accepts "75", "75%", "75.5" and full-width digits ("７５").
+function toTarget(raw: string): number | null {
+  const s = raw.replace(/[０-９．]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).replace(/[%％\s]/g, "");
+  if (!/^\d+(\.\d+)?$/.test(s)) return null;
+  const v = Number(s);
+  return v >= 0 && v <= 100 ? v : null;
+}
+
+export function toTsv(questions: Question[]): string {
+  const rows = questions.map((q) => [q.prompt, q.left, q.right, String(q.target), q.comment ?? ""]);
+  return [TSV_HEADER, ...rows].map((r) => r.join("\t")).join("\n");
+}
