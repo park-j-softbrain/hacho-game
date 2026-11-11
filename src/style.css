@@ -2138,50 +2138,311 @@ button.round-fill {
   }
 }
 
-/* With the band showing, the round above gets about a fifth less height: shrink its big type to match. */
-.with-band .screen-prompt {
+/* With the band or the heart cards showing, the round gets less room: shrink its big type to match. */
+:is(.with-band, .with-hearts) .screen-prompt {
   font-size: 8.5vh;
 }
 
-.with-band .screen-prompt.prompt-long {
+:is(.with-band, .with-hearts) .screen-prompt.prompt-long {
   font-size: 6vh;
 }
 
-.with-band .screen-prompt.prompt-xlong {
+:is(.with-band, .with-hearts) .screen-prompt.prompt-xlong {
   font-size: 4.4vh;
 }
 
-.with-band .screen-side {
+:is(.with-band, .with-hearts) .screen-side {
   gap: 1.6vh;
 }
 
-.with-band .side-card,
-.with-band .winners {
+:is(.with-band, .with-hearts) .side-card,
+:is(.with-band, .with-hearts) .winners {
   padding-block: 1.6vh;
 }
 
-.with-band .screen-target {
+:is(.with-band, .with-hearts) .screen-target {
   font-size: 11vh;
 }
 
-.with-band .screen-big {
+:is(.with-band, .with-hearts) .screen-big {
   font-size: 7vh;
 }
 
-.with-band .average-pill {
+:is(.with-band, .with-hearts) .average-pill {
   padding-block: 0.6vh;
 }
 
-.with-band .average-pill b {
+:is(.with-band, .with-hearts) .average-pill b {
   font-size: 5vh;
 }
 
-.with-band .countdown-large .countdown-secs {
+:is(.with-band, .with-hearts) .countdown-large .countdown-secs {
   font-size: 9vh;
 }
 
-.with-band .answered-chip {
+:is(.with-band, .with-hearts) .answered-chip {
   width: 5.6vh;
   height: 5.6vh;
   font-size: 2.5vh;
+}
+
+/* ---- projector: heart cards around the edges ---- */
+
+.view-switch {
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  z-index: 20;
+  display: flex;
+  border: 2px solid var(--blue);
+  border-radius: 999px;
+  background: var(--card);
+  overflow: hidden;
+  transition: opacity 0.4s;
+}
+
+.view-switch.asleep {
+  opacity: 0;
+}
+
+.view-switch:focus-within {
+  opacity: 1;
+}
+
+.view-switch button {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  color: var(--blue);
+  padding: 6px 14px;
+  font-size: 14px;
+  font-weight: 900;
+  min-height: 0;
+}
+
+.view-switch button[aria-pressed="true"] {
+  background: var(--blue);
+  color: var(--card);
+}
+
+.screen.with-hearts {
+  padding: 1.6vh 1.2vw;
+}
+
+.arena {
+  --gap: 1vw;
+  --card-w: calc((100vw - 2.4vw - (var(--cols) - 1) * var(--gap)) / var(--cols));
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1.6vh;
+}
+
+.arena-row {
+  display: grid;
+  grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
+  gap: var(--gap);
+}
+
+/* a short bottom row still ends at the right-hand corner */
+.arena-row-bottom {
+  direction: rtl;
+}
+
+.arena-row-bottom > * {
+  direction: ltr;
+}
+
+.arena-mid {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: var(--gap);
+}
+
+.arena-col {
+  flex: none;
+  width: var(--card-w);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+}
+
+.arena-center {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1.6vh;
+  padding: 0 0.8vw;
+}
+
+.with-hearts .screen-head {
+  font-size: 2.6vh;
+}
+
+.with-hearts .screen-head h1 {
+  font-size: 3vh;
+}
+
+.with-hearts .screen-prompt {
+  font-size: 6.4vh;
+}
+
+.with-hearts .screen-prompt.prompt-long {
+  font-size: 4.8vh;
+}
+
+.with-hearts .screen-prompt.prompt-xlong {
+  font-size: 3.6vh;
+}
+
+.with-hearts .screen-target {
+  font-size: 9vh;
+}
+
+.with-hearts .winners-row {
+  font-size: 2.4vh;
+}
+
+.with-hearts .answered-chip {
+  width: 4.6vh;
+  height: 4.6vh;
+  font-size: 2.1vh;
+}
+
+.hp-card {
+  position: relative;
+  height: 11.5vh;
+  padding: 1vh 0.8vw;
+  border: 3px solid var(--blue);
+  border-radius: 1.6vh;
+  background: var(--card);
+  box-shadow: 0.5vh 0.45vh 0 var(--pink);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.hp-card.hp-lead {
+  border: 5px solid #ffc21a;
+}
+
+.hp-top {
+  display: flex;
+  align-items: center;
+  gap: 0.5vw;
+  min-width: 0;
+}
+
+.hp-no {
+  flex: none;
+  width: 3.4vh;
+  height: 3.4vh;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--blue);
+  color: var(--card);
+  box-shadow: 0.3vh 0.25vh 0 var(--pink);
+  font-family: var(--display);
+  font-size: 1.9vh;
+}
+
+.hp-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 2.2vh;
+  font-weight: 900;
+  color: var(--mix);
+}
+
+/* the hit pops out over the card's top edge, leaving the name its room */
+.hp-hit {
+  position: absolute;
+  top: -1.3vh;
+  right: 5.5vw;
+  padding: 0 0.5vw;
+  border-radius: 999px;
+  background: var(--pink);
+  color: #fff;
+  font-family: var(--display);
+  font-size: 1.7vh;
+  animation: pop 0.66s steps(4, end) 0.15s both;
+}
+
+.hp-crown {
+  flex: none;
+  height: 2.8vh;
+}
+
+.hp-crown path,
+.hp-crown rect {
+  fill: #ffc21a;
+  stroke: var(--mix);
+  stroke-width: 3;
+  stroke-linejoin: round;
+}
+
+.hp-value {
+  flex: none;
+  font-family: var(--display);
+  font-size: 2.6vh;
+  color: var(--mix);
+}
+
+.hp-hearts {
+  display: flex;
+  gap: 0.35vw;
+}
+
+.heart {
+  position: relative;
+  flex: 1 1 0;
+  max-width: 4.6vh;
+  aspect-ratio: 44 / 41;
+}
+
+.heart svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.heart-empty path {
+  fill: #3255a414;
+  stroke: var(--blue);
+  stroke-width: 2.5;
+}
+
+.heart-lag path {
+  fill: var(--pink);
+}
+
+.heart-full path {
+  fill: var(--blue);
+}
+
+.hp-lead .heart-full path {
+  fill: #ffc21a;
+  stroke: var(--mix);
+  stroke-width: 2;
+}
+
+/* A hit: the hearts drop first, then the pink chunk left behind drains away. */
+.heart-full {
+  transition: clip-path 0.9s ease-out 0.3s;
+}
+
+.heart-lag {
+  transition: clip-path 0.9s ease-in 1.6s;
 }

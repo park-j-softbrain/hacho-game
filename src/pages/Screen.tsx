@@ -1,7 +1,9 @@
 import { useState } from "preact/hooks";
 import type { Board, View } from "../../shared/game";
 import { Dial, Ends, fmt } from "../Dial";
+import { HeartArena } from "../HeartArena";
 import { ScoreBand } from "../ScoreBand";
+import { ViewSwitch, useScoreView } from "../ViewSwitch";
 import { useGame } from "../net";
 import { Banner, Center, Countdown, Logo, PHASE_LABEL } from "../ui";
 
@@ -9,13 +11,17 @@ import { Banner, Center, Countdown, Logo, PHASE_LABEL } from "../ui";
 // the target and the other tables' needles once the round is over.
 export function ScreenPage() {
   const { view, status } = useGame("role=screen");
+  const [mode, setMode] = useScoreView();
   if (!view) return <Center>接続中…</Center>;
 
+  const round =
+    (view.phase === "open" || view.phase === "closed" || view.phase === "reveal") && !!view.question;
   // the running totals; the ranking screen has its own full chart
-  const band = view.played > 0 && view.phase !== "scores";
-  return (
-    <div class={`screen${band ? " with-band" : ""}`}>
-      <Banner status={status} error={null} />
+  const band = mode === "band" && view.played > 0 && view.phase !== "scores";
+  const hearts = mode === "hearts" && round;
+
+  const content = (
+    <>
       <header class="screen-head">
         <div class="brand">
           <Logo />
@@ -39,15 +45,20 @@ export function ScreenPage() {
         </div>
       </header>
       {view.phase === "lobby" && <Lobby view={view} />}
-      {(view.phase === "open" ||
-        view.phase === "closed" ||
-        view.phase === "reveal") &&
-        view.question && <Round view={view} />}
+      {round && <Round view={view} />}
       {view.phase === "scores" && view.board && (
         <ScoreChart view={view} board={view.board} />
       )}
+    </>
+  );
+
+  return (
+    <div class={`screen${band ? " with-band" : ""}${hearts ? " with-hearts" : ""}`}>
+      <Banner status={status} error={null} />
+      {hearts ? <HeartArena view={view}>{content}</HeartArena> : content}
       {band && <ScoreBand tables={view.tables} />}
       <FullscreenButton />
+      <ViewSwitch mode={mode} onChange={setMode} />
     </div>
   );
 }
