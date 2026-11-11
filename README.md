@@ -79,6 +79,7 @@ npm run build && npx wrangler deploy --durable-objects-code-update-mode immediat
 - **A network blocks the live connection** (some company web filters break WebSockets): the page notices and asks the server about once a second over normal HTTPS instead. Everything works; updates on that device can lag by up to a second. Other devices are not affected.
 - **A phone dies:** scan the same table card with another phone.
 - **Time runs out too early:** use **+15秒** while answers are open, or start the question again from 問題一覧. Playing a question again replaces its earlier points.
+- **A page says アクセスが多すぎます:** the server's rate limits were hit (20 wrong passwords or QR codes from one address in a minute, or far more requests than the app sends). Wait a minute and reload. The limits are at the top of `worker/game.ts`.
 - **A score needs fixing:** use the **+1 / −1** buttons in スコア. Team names can be changed there too.
 
 ## Look

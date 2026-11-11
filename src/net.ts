@@ -11,6 +11,7 @@ export function serverNow(): number {
 }
 
 const POLL_MS = 1000;
+const BUSY_MS = 10000; // how long to wait when the server says to slow down
 
 // Keeps one WebSocket to the game open: reconnects with backoff, and checks the
 // connection again when a phone wakes up, since a sleeping phone's socket often
@@ -55,6 +56,7 @@ export function useGame(query: string) {
     let queue: (TableMsg | AdminMsg)[] = [];
     let inflight = false;
     let pollTimer: ReturnType<typeof setTimeout> | undefined;
+    let busyUntil = 0;
 
     const poll = async () => {
       clearTimeout(pollTimer);
@@ -69,6 +71,7 @@ export function useGame(query: string) {
           body: JSON.stringify({ rev, msgs }),
           cache: "no-store",
         });
+        if (res.status === 429) busyUntil = Date.now() + BUSY_MS;
         if (!res.ok) throw new Error(String(res.status));
         const r: { rev: string; msgs: { t: string }[] } = await res.json();
         rev = r.rev;
@@ -80,7 +83,8 @@ export function useGame(query: string) {
         if (polling && !wsRef.current) setStatus("closed");
       }
       inflight = false;
-      if (polling && !stopped) pollTimer = setTimeout(poll, queue.length ? 0 : POLL_MS);
+      const wait = Math.max(queue.length ? 0 : POLL_MS, busyUntil - Date.now());
+      if (polling && !stopped) pollTimer = setTimeout(poll, wait);
     };
 
     // A needle move replaces any move still waiting, so dragging sends one request per poll.
@@ -126,14 +130,14 @@ export function useGame(query: string) {
         if (e.data === "pong") return;
         handle(JSON.parse(e.data));
       };
-      socket.onclose = () => {
+      socket.onclose = (e) => {
         if (ws !== socket) return;
         ws = wsRef.current = null;
         if (!opened && ++failedOpens >= 2) startPolling();
         if (!polling) setStatus("closed");
         if (stopped) return;
         // while the fallback works, try the WebSocket again only now and then
-        const wait = polling ? 30000 : Math.min(5000, 500 * 2 ** retries++);
+        const wait = e.code === 4029 ? BUSY_MS : polling ? 30000 : Math.min(5000, 500 * 2 ** retries++);
         retryTimer = setTimeout(open, wait);
       };
     };

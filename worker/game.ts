@@ -12,6 +12,7 @@ import {
   type Viewer,
 } from "../shared/game";
 import { SAMPLE_QUESTIONS } from "../shared/questions";
+import { Bucket, Limiter } from "./limits";
 
 type Attachment = { role: "screen" } | { role: "admin" } | { role: "table"; n: number };
 
@@ -20,6 +21,15 @@ type Attachment = { role: "screen" } | { role: "admin" } | { role: "table"; n: n
 const POLL_ONLINE_MS = 6000;
 // Room for a full question import; anything bigger isn't from the app.
 const MAX_BODY = 256 * 1024;
+
+// Rate limits. Real use is far below these: a page on the HTTPS fallback asks
+// 60 times a minute, and a phone sends at most ~4 needle moves a second.
+const FAILS_PER_MIN = 20; // wrong passwords or QR codes from one IP address, then it waits a minute
+const REQUESTS_PER_MIN = 360; // connections and fallback requests per IP address and page (several screens can share one office address)
+const MAX_SOCKETS = 300; // open connections in total
+const MSG_BURST = 30; // messages one connection can send at once…
+const MSG_PER_SEC = 10; // …and per second after that
+const SLOW_DOWN = "アクセスが多すぎます。1分ほど待ってから、もう一度お試しください。";
 
 // One instance holds the whole event: state, connections and the answer timer.
 // It uses the WebSocket Hibernation API, so it can sleep between messages and
@@ -35,6 +45,9 @@ export class Game extends DurableObject<Env> {
   private rev = `${Date.now().toString(36)}-0`;
   private revCount = 0;
   private lastOnline = "";
+  private fails = new Limiter(FAILS_PER_MIN);
+  private requests = new Limiter(REQUESTS_PER_MIN);
+  private buckets = new WeakMap<WebSocket, Bucket>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -52,10 +65,17 @@ export class Game extends DurableObject<Env> {
   }
 
   async fetch(req: Request): Promise<Response> {
-    const att = await this.authorize(new URL(req.url));
-    if (req.headers.get("Upgrade") !== "websocket") return this.poll(req, att);
+    const ws = req.headers.get("Upgrade") === "websocket";
+    const ip = req.headers.get("CF-Connecting-IP") ?? "local";
+    // An address that keeps guessing passwords or QR codes is turned away for a minute.
+    const att = this.fails.over(ip) ? SLOW_DOWN : await this.authorize(new URL(req.url));
+    if (typeof att === "string" && att !== SLOW_DOWN) this.fails.hit(ip);
+    const who = typeof att === "string" ? "refused" : att.role === "table" ? `table:${att.n}` : att.role;
+    const busy = !this.requests.hit(`${ip}|${who}`) || (ws && this.ctx.getWebSockets().length >= MAX_SOCKETS);
+    if (!ws) return busy ? new Response(SLOW_DOWN, { status: 429, headers: { "Retry-After": "10" } }) : this.poll(req, att);
 
     const [client, server] = Object.values(new WebSocketPair());
+    if (busy) return closeBusy(client, server);
     if (typeof att === "string") return refuse(client, server, att);
     this.ctx.acceptWebSocket(server, [att.role]);
     server.serializeAttachment(att);
@@ -90,7 +110,13 @@ export class Game extends DurableObject<Env> {
     } catch {
       return;
     }
-    const error = await this.apply(ws.deserializeAttachment() as Attachment, [m]);
+    const att = ws.deserializeAttachment() as Attachment;
+    // The projector only listens; anything it sends is not from the app.
+    if (att.role === "screen") return ws.close(1008, "read-only");
+    let bucket = this.buckets.get(ws);
+    if (!bucket) this.buckets.set(ws, (bucket = new Bucket(MSG_BURST, MSG_PER_SEC)));
+    if (!bucket.take()) return; // dropped: far faster than the app ever sends
+    const error = await this.apply(att, [m]);
     if (error) ws.send(JSON.stringify({ t: "error", msg: error }));
   }
 
@@ -251,6 +277,13 @@ export class Game extends DurableObject<Env> {
     }
     return t;
   }
+}
+
+// Accept and close at once with a "slow down" code; the page waits before trying again.
+function closeBusy(client: WebSocket, server: WebSocket): Response {
+  server.accept();
+  server.close(4029, "busy");
+  return new Response(null, { status: 101, webSocket: client });
 }
 
 // Accept just long enough to tell the page why, so it stops reconnecting.
