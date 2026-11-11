@@ -10,23 +10,17 @@ export function serverNow(): number {
   return Date.now() + clockOffset;
 }
 
-const POLL_MS = 1000;
 const BUSY_MS = 10000; // how long to wait when the server says to slow down
 
 // Keeps one WebSocket to the game open: reconnects with backoff, and checks the
 // connection again when a phone wakes up, since a sleeping phone's socket often
 // looks open but is dead.
-//
-// Some company web filters decrypt HTTPS and break the WebSocket handshake. When
-// sockets keep failing before they open, the page asks over plain HTTPS about
-// once a second instead (POST /api), and keeps trying the WebSocket now and then.
 export function useGame(query: string) {
   const [view, setView] = useState<View | null>(null);
   const [status, setStatus] = useState<Status>("connecting");
   const [fatal, setFatal] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
-  const queueRef = useRef<((m: TableMsg | AdminMsg) => boolean) | null>(null);
 
   useEffect(() => {
     const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws?${query}`;
@@ -44,70 +38,8 @@ export function useGame(query: string) {
         setError(m.msg!);
       } else if (m.t === "fatal") {
         stopped = true;
-        polling = false;
         setFatal(m.msg!);
       }
-    };
-
-    // ---- the HTTPS fallback ----
-    let failedOpens = 0; // sockets in a row that closed without ever opening
-    let polling = false;
-    let rev = "";
-    let queue: (TableMsg | AdminMsg)[] = [];
-    let inflight = false;
-    let pollTimer: ReturnType<typeof setTimeout> | undefined;
-    let busyUntil = 0;
-
-    const poll = async () => {
-      clearTimeout(pollTimer);
-      if (!polling || stopped || inflight) return;
-      inflight = true;
-      const msgs = queue;
-      queue = [];
-      try {
-        const res = await fetch(`/api?${query}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ rev, msgs }),
-          cache: "no-store",
-        });
-        if (res.status === 429) busyUntil = Date.now() + BUSY_MS;
-        if (!res.ok) throw new Error(String(res.status));
-        const r: { rev: string; msgs: { t: string }[] } = await res.json();
-        rev = r.rev;
-        r.msgs.forEach(handle);
-        if (polling && !wsRef.current) setStatus("open");
-      } catch {
-        // Not resent: the server may have applied them before the reply was lost.
-        if (msgs.some((m) => m.t !== "move")) setError("送信できませんでした。もう一度お試しください");
-        if (polling && !wsRef.current) setStatus("closed");
-      }
-      inflight = false;
-      const wait = Math.max(queue.length ? 0 : POLL_MS, busyUntil - Date.now());
-      if (polling && !stopped) pollTimer = setTimeout(poll, wait);
-    };
-
-    // A needle move replaces any move still waiting, so dragging sends one request per poll.
-    queueRef.current = (m) => {
-      if (!polling) return false;
-      if (m.t === "move") queue = queue.filter((x) => x.t !== "move");
-      queue.push(m);
-      void poll();
-      return true;
-    };
-
-    const startPolling = () => {
-      if (polling) return;
-      polling = true;
-      void poll();
-    };
-
-    const stopPolling = (socket: WebSocket) => {
-      if (!polling) return;
-      polling = false;
-      clearTimeout(pollTimer);
-      for (const m of queue) socket.send(JSON.stringify(m));
-      queue = [];
     };
 
     const open = () => {
@@ -116,13 +48,9 @@ export function useGame(query: string) {
       const socket = new WebSocket(url);
       ws = wsRef.current = socket;
       setStatus("connecting");
-      let opened = false;
       socket.onopen = () => {
-        opened = true;
         retries = 0;
-        failedOpens = 0;
         lastMessage = Date.now();
-        stopPolling(socket);
         setStatus("open");
       };
       socket.onmessage = (e) => {
@@ -133,11 +61,9 @@ export function useGame(query: string) {
       socket.onclose = (e) => {
         if (ws !== socket) return;
         ws = wsRef.current = null;
-        if (!opened && ++failedOpens >= 2) startPolling();
-        if (!polling) setStatus("closed");
+        setStatus("closed");
         if (stopped) return;
-        // while the fallback works, try the WebSocket again only now and then
-        const wait = e.code === 4029 ? BUSY_MS : polling ? 30000 : Math.min(5000, 500 * 2 ** retries++);
+        const wait = e.code === 4029 ? BUSY_MS : Math.min(5000, 500 * 2 ** retries++);
         retryTimer = setTimeout(open, wait);
       };
     };
@@ -158,8 +84,7 @@ export function useGame(query: string) {
 
     const wake = () => {
       if (document.visibilityState !== "visible" || stopped) return;
-      if (polling) void poll();
-      if (!ws) return polling ? undefined : open();
+      if (!ws) return open();
       const asked = Date.now();
       if (ws.readyState === WebSocket.OPEN) ws.send("ping");
       setTimeout(() => {
@@ -172,11 +97,8 @@ export function useGame(query: string) {
     open();
     return () => {
       stopped = true;
-      polling = false;
-      queueRef.current = null;
       clearInterval(heartbeat);
       clearTimeout(retryTimer);
-      clearTimeout(pollTimer);
       document.removeEventListener("visibilitychange", wake);
       window.removeEventListener("online", wake);
       ws?.close();
@@ -192,7 +114,6 @@ export function useGame(query: string) {
   const send = (m: TableMsg | AdminMsg): boolean => {
     const ws = wsRef.current;
     if (ws?.readyState !== WebSocket.OPEN) {
-      if (queueRef.current?.(m)) return true;
       setError("接続が切れています。再接続をお待ちください");
       return false;
     }
