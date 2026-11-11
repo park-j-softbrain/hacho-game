@@ -44,16 +44,35 @@ export const GRACE_MS = 1000;
 export const MAX_TABLES = 100;
 export const MAX_QUESTIONS = 200;
 
-// Distance from the target (on the 0–100 scale) → points, like the board game's 4-3-2 wedge.
-export const BANDS = [
-  { within: 2.5, points: 4 },
-  { within: 7.5, points: 3 },
-  { within: 12.5, points: 2 },
-];
-
+// Scoring is the miss: how far the answer is from the target on the 0–100 scale.
+// The lowest total wins. A table that gave no answer scores the worst miss
+// possible for that question, so skipping can never beat guessing.
 export function pointsFor(guess: number, target: number): number {
-  const d = Math.abs(guess - target);
-  return BANDS.find((b) => d <= b.within)?.points ?? 0;
+  return round1(Math.abs(guess - target));
+}
+
+export function missPenalty(target: number): number {
+  return round1(Math.max(target, 100 - target));
+}
+
+function round1(x: number): number {
+  return Math.round(x * 10) / 10;
+}
+
+// Every table's miss for one question, from the answers that were in when it closed.
+function scoreRound(s: GameState, target: number, answers: Record<number, number>): Record<number, number> {
+  const points: Record<number, number> = {};
+  for (const n of tableNumbers(s)) points[n] = n in answers ? pointsFor(answers[n], target) : missPenalty(target);
+  return points;
+}
+
+// Competition ranks among the tables that answered: the closest is 1st, equal misses share a rank.
+export function roundRanks(r: RoundResult): Record<number, number> {
+  const rows = Object.keys(r.answers).map((k) => ({ n: Number(k), p: r.points[Number(k)] ?? 0 }));
+  rows.sort((a, b) => a.p - b.p || a.n - b.n);
+  const ranks: Record<number, number> = {};
+  rows.forEach((row, i) => (ranks[row.n] = i > 0 && row.p === rows[i - 1].p ? ranks[rows[i - 1].n] : i + 1));
+  return ranks;
 }
 
 export function initialState(questions: QuestionInput[]): GameState {
@@ -92,15 +111,15 @@ export function tableNumbers(s: GameState): number[] {
 export function scoreOf(s: GameState, n: number): number {
   let total = s.adjust[n] ?? 0;
   for (const r of Object.values(s.results)) total += r.points[n] ?? 0;
-  return total;
+  return round1(total);
 }
 
 export type Standing = { n: number; name: string; score: number; rank: number };
 
-// Competition ranking: equal scores share a rank (1, 1, 3).
+// Competition ranking, lowest score first: equal scores share a rank (1, 1, 3).
 export function standings(s: GameState): Standing[] {
   const rows = tableNumbers(s).map((n) => ({ n, name: nameOf(s, n), score: scoreOf(s, n), rank: 0 }));
-  rows.sort((a, b) => b.score - a.score || a.n - b.n);
+  rows.sort((a, b) => a.score - b.score || a.n - b.n);
   rows.forEach((r, i) => {
     r.rank = i > 0 && r.score === rows[i - 1].score ? rows[i - 1].rank : i + 1;
   });
@@ -135,6 +154,9 @@ export type AdminMsg =
   | { t: "rename"; n: number; name: string }
   | { t: "adjust"; n: number; delta: number }
   | { t: "questions"; questions: QuestionInput[] }
+  | { t: "addQuestion"; question: QuestionInput }
+  | { t: "updateQuestion"; id: string; question: QuestionInput }
+  | { t: "deleteQuestion"; id: string }
   | { t: "reset" };
 
 const CLOSED = "回答の受付は終了しました";
@@ -184,13 +206,9 @@ export function applyAdmin(s: GameState, m: AdminMsg, now: number): string | und
       if (s.phase === "open") s.phase = "closed";
       const q = currentQuestion(s);
       if (s.phase !== "closed" || !q) return "締め切ったあとに発表できます";
-      const result: RoundResult = { answers: {}, points: {} };
-      for (const [key, a] of Object.entries(s.answers)) {
-        const n = Number(key);
-        result.answers[n] = a.v;
-        result.points[n] = pointsFor(a.v, q.target);
-      }
-      s.results[q.id] = result; // re-running a question replaces its earlier result
+      const answers: Record<number, number> = {};
+      for (const [key, a] of Object.entries(s.answers)) answers[Number(key)] = a.v;
+      s.results[q.id] = { answers, points: scoreRound(s, q.target, answers) }; // re-running a question replaces its earlier result
       s.played = [...playedOrder(s).filter((id) => id !== q.id), q.id];
       s.phase = "reveal";
       return;
@@ -224,6 +242,40 @@ export function applyAdmin(s: GameState, m: AdminMsg, now: number): string | und
       setQuestions(s, questions);
       return;
     }
+    case "addQuestion": {
+      if (s.questions.length >= MAX_QUESTIONS) return `問題は${MAX_QUESTIONS}問までです`;
+      const q = checkQuestion(m.question);
+      if (typeof q === "string") return q;
+      s.questions.push(makeQuestion(s, q));
+      return;
+    }
+    case "updateQuestion": {
+      const old = s.questions.find((q) => q.id === m.id);
+      if (!old) return "問題が見つかりません";
+      if (isLive(s, old.id)) return "出題中の問題は変更できません";
+      const q = checkQuestion(m.question);
+      if (typeof q === "string") return q;
+      Object.assign(old, makeQuestion(s, q, old.id));
+      if (!q.comment) delete old.comment;
+      // A question that was already revealed is scored again against its new answer.
+      const r = s.results[old.id];
+      if (r) r.points = scoreRound(s, old.target, r.answers);
+      return;
+    }
+    case "deleteQuestion": {
+      const i = s.questions.findIndex((q) => q.id === m.id);
+      if (i < 0) return "問題が見つかりません";
+      if (isLive(s, m.id)) return "出題中の問題は削除できません";
+      s.questions.splice(i, 1);
+      delete s.results[m.id];
+      s.played = (s.played ?? []).filter((id) => id !== m.id);
+      if (s.qid === m.id) {
+        s.qid = null;
+        s.answers = {};
+        if (s.phase === "reveal") s.phase = "lobby";
+      }
+      return;
+    }
     case "reset":
       Object.assign(s, {
         names: {},
@@ -255,15 +307,34 @@ export function closeIfExpired(s: GameState, now: number): boolean {
 }
 
 function setQuestions(s: GameState, questions: QuestionInput[]) {
-  s.questions = questions.map((q) => ({
-    id: `q${s.nextId++}`,
+  s.questions = questions.map((q) => makeQuestion(s, q));
+  if (!currentQuestion(s)) s.qid = null;
+}
+
+function makeQuestion(s: GameState, q: QuestionInput, id = `q${s.nextId++}`): Question {
+  return {
+    id,
     prompt: clean(q.prompt, 80),
     left: clean(q.left, 24),
     right: clean(q.right, 24),
     target: toValue(q.target, 1) ?? 50,
     ...(q.comment ? { comment: clean(q.comment, 160) } : {}),
-  }));
-  if (!currentQuestion(s)) s.qid = null;
+  };
+}
+
+// A question typed on the admin page: say what is wrong instead of guessing.
+function checkQuestion(q: QuestionInput): QuestionInput | string {
+  if (!q || typeof q !== "object") return "問題が読み取れませんでした";
+  if (!clean(q.prompt, 80)) return "お題を入力してください";
+  if (typeof q.target !== "number" || !Number.isFinite(q.target) || q.target < 0 || q.target > 100) {
+    return "正解は0〜100の数字で入力してください";
+  }
+  return q;
+}
+
+// The question being played right now can't change under the tables' hands.
+function isLive(s: GameState, id: string): boolean {
+  return s.qid === id && (s.phase === "open" || s.phase === "closed");
 }
 
 function setName(s: GameState, n: number, name: unknown) {
@@ -305,6 +376,7 @@ export type View = {
   title: string;
   phase: Phase;
   final: boolean; // every question has been revealed
+  played: number; // questions revealed so far; scores mean nothing before the first
   qid: string | null;
   qNo: number;
   qCount: number;
@@ -315,7 +387,8 @@ export type View = {
   // all tables' needles: admin always, projector once the round is closed
   answers?: { n: number; v: number; submitted: boolean }[];
   average?: number | null;
-  result?: { target: number; comment?: string; points: Record<number, number> };
+  // points = each table's miss for this question (lower is better); ranks only cover tables that answered
+  result?: { target: number; comment?: string; points: Record<number, number>; ranks: Record<number, number> };
   me?: { n: number; name: string; hasName: boolean; answer: Answer | null; score: number; rank: number };
   // the score graph, sent while the ranking is shown
   board?: Board;
@@ -347,8 +420,8 @@ export function buildBoard(s: GameState): Board {
     prevRank: null as number | null,
   }));
   if (order.length > 1) {
-    const before = rows.map((r) => scoreOf(s, r.n) - r.pts[r.pts.length - 1]);
-    rows.forEach((r, i) => (r.prevRank = 1 + before.filter((b) => b > before[i]).length));
+    const before = rows.map((r) => round1(scoreOf(s, r.n) - r.pts[r.pts.length - 1]));
+    rows.forEach((r, i) => (r.prevRank = 1 + before.filter((b) => b < before[i]).length));
   }
   const lastIndex = s.questions.findIndex((q) => q.id === last);
   return { lastQNo: lastIndex >= 0 ? lastIndex + 1 : null, rows };
@@ -369,6 +442,7 @@ export function buildView(s: GameState, viewer: Viewer, online: Set<number>, now
     title: s.title,
     phase: s.phase,
     final: s.questions.length > 0 && s.questions.every((x) => s.results[x.id]),
+    played: playedOrder(s).length,
     qid: q?.id ?? null,
     qNo: q ? s.questions.indexOf(q) + 1 : 0,
     qCount: s.questions.length,
@@ -389,7 +463,8 @@ export function buildView(s: GameState, viewer: Viewer, online: Set<number>, now
     view.average = average(view.answers.map((a) => a.v));
   }
   if (s.phase === "reveal" && q) {
-    view.result = { target: q.target, comment: q.comment, points: s.results[q.id]?.points ?? {} };
+    const r = s.results[q.id];
+    view.result = { target: q.target, comment: q.comment, points: r?.points ?? {}, ranks: r ? roundRanks(r) : {} };
   }
   if (s.phase === "scores") view.board = buildBoard(s);
   if (viewer.role === "table") {

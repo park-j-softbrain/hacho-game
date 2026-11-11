@@ -78,7 +78,7 @@ function Round({ view }: { view: View }) {
       ? undefined
       : (view.answers ?? []).map((a) => ({
           ...a,
-          points: result?.points[a.n],
+          best: result?.ranks[a.n] === 1,
         }));
   const long =
     q.prompt.length > 32
@@ -140,13 +140,18 @@ function Answering({ view }: { view: View }) {
 function Result({ view }: { view: View }) {
   const result = view.result!;
   const names = new Map(view.tables.map((t) => [t.n, t.name]));
-  const answered = view.answers ?? [];
-  const byPoints = [4, 3, 2].map((p) => ({
-    p,
-    names: answered
-      .filter((a) => result.points[a.n] === p)
-      .map((a) => names.get(a.n) ?? `テーブル${a.n}`),
-  }));
+  // The closest three places (ties share one), with each table's miss.
+  const places = [1, 2, 3]
+    .map((rank) => ({
+      rank,
+      rows: Object.entries(result.ranks)
+        .filter(([, r]) => r === rank)
+        .map(([n]) => ({
+          name: names.get(Number(n)) ?? `テーブル${n}`,
+          miss: result.points[Number(n)] ?? 0,
+        })),
+    }))
+    .filter((p) => p.rows.length > 0);
   return (
     <>
       <div class="card card-dots side-card target-card">
@@ -155,27 +160,27 @@ function Result({ view }: { view: View }) {
         {result.comment && <p class="screen-comment">{result.comment}</p>}
       </div>
       <div class="card winners">
-        {byPoints.map(
-          (row) =>
-            row.names.length > 0 && (
-              <div class="winners-row">
-                <span class={`points-badge points-badge-${row.p}`}>
-                  <b>{row.p}</b>点
-                </span>
-                <span class="winners-names">
-                  {row.names.map((name, i) => (
-                    <>
-                      {i > 0 && "・"}
-                      <span class="nowrap">{name}</span>
-                    </>
-                  ))}
-                </span>
-              </div>
-            ),
+        {places.map((p) => (
+          <div class="winners-row">
+            <span class={`points-badge points-badge-${5 - p.rank}`}>
+              <b>{p.rank}</b>位
+            </span>
+            <span class="winners-names">
+              {p.rows.map((row, i) => (
+                <>
+                  {i > 0 && "・"}
+                  <span class="nowrap">
+                    {row.name}（{fmt(row.miss)}）
+                  </span>
+                </>
+              ))}
+            </span>
+          </div>
+        ))}
+        {places.length === 0 && (
+          <p class="screen-sub">回答したチームはありませんでした</p>
         )}
-        {byPoints.every((row) => row.names.length === 0) && (
-          <p class="screen-sub">得点したチームはありませんでした</p>
-        )}
+        <p class="small">（）は正解とのズレ。少ないほど上位</p>
       </div>
     </>
   );
@@ -191,23 +196,28 @@ function ScoreChart({ view, board }: { view: View; board: Board }) {
     ...tables.map((t) => t.score),
     ...board.rows.map((r) => r.pts.reduce((a, b) => a + b, 0)),
   );
-  const max = Math.max(10, Math.ceil(top / 5) * 5);
-  const ticks = Array.from({ length: max / 5 + 1 }, (_, i) => i * 5);
+  // Gridlines every 5, 10, 20, … so there are never more than about eight.
+  const step = [5, 10, 20, 25, 50, 100, 200].find((x) => top / x <= 8) ?? 500;
+  const max = Math.max(2 * step, Math.ceil(top / step) * step);
+  const ticks = Array.from({ length: max / step + 1 }, (_, i) => i * step);
   const columns = tables.length > 12 ? 2 : 1;
   const perColumn = Math.ceil(tables.length / columns);
   const latest = board.lastQNo
-    ? `Q${board.lastQNo} の得点`
-    : "最新の問題の得点";
+    ? `Q${board.lastQNo} のズレ`
+    : "最新の問題のズレ";
   const pct = (v: number) => `${(v / max) * 100}%`;
 
   return (
     <div class="scoreboard">
       <div class="scoreboard-head">
-        <h2 class="display print">{view.final ? "最終結果" : "合計得点"}</h2>
+        <h2 class="display print">
+          {view.final ? "最終結果" : "合計のズレ"}
+          <small class="board-note">少ないほど上位</small>
+        </h2>
         <div class="legend">
           <span>
             <i class="swatch swatch-past" aria-hidden="true" />
-            これまでの得点（1問ずつ区切り）
+            これまでのズレ（1問ずつ区切り）
           </span>
           <span>
             <i class="swatch swatch-last" aria-hidden="true" />
@@ -218,7 +228,7 @@ function ScoreChart({ view, board }: { view: View; board: Board }) {
       <div
         class="chart"
         role="img"
-        aria-label={`合計得点のグラフ。${tables.map((t) => `${t.rank}位 ${t.name} ${t.score}点`).join("、")}`}
+        aria-label={`合計のズレのグラフ。${tables.map((t) => `${t.rank}位 ${t.name} ${fmt(t.score)}点`).join("、")}`}
         style={{ "--columns": columns, "--rows": perColumn }}
       >
         {Array.from({ length: columns }, (_, c) => (
@@ -237,7 +247,7 @@ function ScoreChart({ view, board }: { view: View; board: Board }) {
                 return (
                   <div class="chart-row">
                     <span
-                      class={`rank-badge${t.rank === 1 && t.score > 0 ? " rank-1" : ""}`}
+                      class={`rank-badge${t.rank === 1 ? " rank-1" : ""}`}
                     >
                       {t.rank}
                     </span>
@@ -260,7 +270,7 @@ function ScoreChart({ view, board }: { view: View; board: Board }) {
                                   width: `calc(${pct(p)} - var(--seg-gap))`,
                                 }}
                               >
-                                {i === pts.length - 1 && `+${p}`}
+                                {i === pts.length - 1 && `+${fmt(p)}`}
                               </span>
                             ),
                         )}
@@ -279,7 +289,7 @@ function ScoreChart({ view, board }: { view: View; board: Board }) {
                       </div>
                     </div>
                     <span class="chart-total display">
-                      {t.score}
+                      {fmt(t.score)}
                       <small>点</small>
                     </span>
                     <span

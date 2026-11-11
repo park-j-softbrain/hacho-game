@@ -1,9 +1,8 @@
 import { useId, useRef } from "preact/hooks";
-import { BANDS } from "../shared/game";
 
 // A half-circle dial: 0 at the left end, 100 at the right end. Drawn like a
-// two-ink risograph print: blue halftone track, pink scoring wedges that
-// overprint the blue, and slightly misregistered pink "plates" under the needle.
+// two-ink risograph print: blue halftone track, a pink target line, and
+// slightly misregistered pink "plates" under the needle.
 const CX = 100;
 const CY = 100;
 const R = 94; // outer rim
@@ -12,12 +11,6 @@ const RI = 46; // inner edge of the track
 function at(v: number, r: number): [number, number] {
   const a = Math.PI * (1 - v / 100);
   return [CX + r * Math.cos(a), CY - r * Math.sin(a)];
-}
-
-function wedge(from: number, to: number, r: number): string {
-  const [x1, y1] = at(Math.max(0, from), r);
-  const [x2, y2] = at(Math.min(100, to), r);
-  return `M${CX},${CY} L${x1},${y1} A${r},${r} 0 0 1 ${x2},${y2} Z`;
 }
 
 const TRACK = (() => {
@@ -40,12 +33,12 @@ const TICKS = (() => {
   return { major, minor };
 })();
 
-// hollow: a needle the table hasn't sent yet (admin view)
-export type Marker = { n: number; v: number; points?: number; hollow?: boolean };
+// hollow: a needle the table hasn't sent yet (admin view); best: the closest answer
+export type Marker = { n: number; v: number; best?: boolean; hollow?: boolean };
 
 type Props = {
   value?: number | null; // this table's needle
-  target?: number | null; // shows the scoring wedge
+  target?: number | null; // draws the answer line
   markers?: Marker[]; // every table's needle (projector / admin)
   onChange?: (v: number) => void; // while dragging
   onCommit?: (v: number) => void; // on release
@@ -106,15 +99,8 @@ export function Dial({ value, target, markers, onChange, onCommit, disabled, lab
         <pattern id={`${id}-track`} width="3.4" height="3.4" patternUnits="userSpaceOnUse" patternTransform="rotate(15)">
           <circle class="ink-blue" cx="1.7" cy="1.7" r="0.62" />
         </pattern>
-        <pattern id={`${id}-p2`} width="3" height="3" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-          <circle class="ink-pink" cx="1.5" cy="1.5" r="0.75" />
-        </pattern>
-        <pattern id={`${id}-p3`} width="3" height="3" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-          <circle class="ink-pink" cx="1.5" cy="1.5" r="1.25" />
-        </pattern>
       </defs>
       <path d={TRACK} fill={`url(#${id}-track)`} />
-      {target != null && <Wedge target={target} id={id} />}
       <path class="dial-outline" d={TRACK} />
       <path class="dial-tick" d={TICKS.major} />
       <path class="dial-tick dial-tick-minor" d={TICKS.minor} />
@@ -124,40 +110,6 @@ export function Dial({ value, target, markers, onChange, onCommit, disabled, lab
       <circle class="dial-hub" cx={CX} cy={CY} r={8} />
       <circle class="dial-hub-dot" cx={CX} cy={CY} r={3} />
     </svg>
-  );
-}
-
-function Wedge({ target, id }: { target: number; id: string }) {
-  const w = (within: number) => wedge(target - within, target + within, R);
-  const [b4, b3, b2] = BANDS;
-  return (
-    <>
-      <g class="wedge">
-        <path d={w(b2.within)} fill={`url(#${id}-p2)`} />
-        <path d={w(b3.within)} fill={`url(#${id}-p3)`} />
-        <path class="ink-pink" d={w(b4.within)} />
-        {/* the blue plate's outline, printed a little off register */}
-        <path class="wedge-outline" d={w(b2.within)} transform="translate(-1.2 -0.8)" />
-      </g>
-      {BANDS.flatMap((b, i) => {
-        const inner = i === 0 ? 0 : BANDS[i - 1].within;
-        const offsets = i === 0 ? [0] : [-(inner + b.within) / 2, (inner + b.within) / 2];
-        return offsets
-          .map((o) => target + o)
-          .filter((v) => v >= 0 && v <= 100)
-          .map((v) => {
-            const [x, y] = at(v, R + 8); // just outside the rim, clear of the markers
-            return (
-              <g class={`band-label band-label-${b.points}`}>
-                <circle cx={x} cy={y} r={5} />
-                <text x={x} y={y}>
-                  {b.points}
-                </text>
-              </g>
-            );
-          });
-      })}
-    </>
   );
 }
 
@@ -213,7 +165,7 @@ function Markers({ markers }: { markers: Marker[] }) {
       })}
       {placed.map((m) => {
         const [x, y] = at(m.v, m.r);
-        const kind = m.hollow ? " marker-hollow" : m.points === 4 ? " marker-hit" : "";
+        const kind = m.hollow ? " marker-hollow" : m.best ? " marker-hit" : "";
         return (
           <g class={`marker${kind}`}>
             <circle class="marker-plate" cx={x + 1} cy={y + 0.8} r={dot} />

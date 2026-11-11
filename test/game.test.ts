@@ -6,7 +6,9 @@ import {
   closeIfExpired,
   GRACE_MS,
   initialState,
+  missPenalty,
   pointsFor,
+  roundRanks,
   standings,
   type GameState,
 } from "../shared/game";
@@ -25,35 +27,50 @@ function started(now = 0): GameState {
 }
 
 describe("scoring", () => {
-  it("gives 4 / 3 / 2 / 0 by distance from the target", () => {
-    expect(pointsFor(75, 75.5)).toBe(4);
-    expect(pointsFor(73, 75.5)).toBe(4); // 2.5 away: edge of the bullseye
-    expect(pointsFor(70, 75.5)).toBe(3);
-    expect(pointsFor(64, 75.5)).toBe(2);
-    expect(pointsFor(62, 75.5)).toBe(0);
+  it("scores the distance from the target, and the worst possible miss for no answer", () => {
+    expect(pointsFor(75.5, 75.5)).toBe(0);
+    expect(pointsFor(75, 75.5)).toBe(0.5);
+    expect(pointsFor(64, 75.5)).toBe(11.5);
+    expect(pointsFor(0.1, 0.3)).toBe(0.2); // no floating-point tails
+    expect(missPenalty(75.5)).toBe(75.5);
+    expect(missPenalty(40)).toBe(60);
   });
 
-  it("ranks equal scores together", () => {
+  it("ranks the closest answer first, with ties sharing a rank", () => {
+    expect(roundRanks({ answers: { 1: 50, 2: 52, 3: 48, 5: 90 }, points: { 1: 2, 2: 4, 3: 2, 4: 60, 5: 40 } })).toEqual({
+      1: 1,
+      3: 1,
+      2: 3,
+      5: 4,
+    });
+  });
+
+  it("puts the lowest total first and ranks equal totals together", () => {
     const s = initialState(Q);
     s.tableCount = 3;
     s.adjust = { 1: 5, 2: 5, 3: 1 };
     expect(standings(s).map((r) => [r.n, r.rank])).toEqual([
-      [1, 1],
-      [2, 1],
-      [3, 3],
+      [3, 1],
+      [1, 2],
+      [2, 2],
     ]);
   });
 });
 
 describe("a round", () => {
-  it("counts submitted answers and last needle positions, and nothing for untouched tables", () => {
+  it("scores submitted answers and last needle positions, and the worst miss for untouched tables", () => {
     const s = started();
     applyTable(s, 1, { t: "submit", v: 75 }, 1000);
     applyTable(s, 2, { t: "move", v: 66 }, 2000);
     applyAdmin(s, { t: "close" }, 3000);
     applyAdmin(s, { t: "reveal" }, 4000);
-    expect(s.results[s.questions[0].id].points).toEqual({ 1: 4, 2: 2 });
-    expect(standings(s).map((r) => r.score)).toEqual([4, 2, 0]);
+    expect(s.results[s.questions[0].id].points).toEqual({ 1: 0.5, 2: 9.5, 3: 75.5 });
+    expect(s.results[s.questions[0].id].answers).toEqual({ 1: 75, 2: 66 });
+    expect(standings(s).map((r) => [r.n, r.score])).toEqual([
+      [1, 0.5],
+      [2, 9.5],
+      [3, 75.5],
+    ]);
   });
 
   it("locks the needle after 回答 until 修正する", () => {
@@ -83,7 +100,8 @@ describe("a round", () => {
     applyAdmin(s, { t: "start", qid: s.questions[0].id }, 3000);
     applyTable(s, 1, { t: "submit", v: 0 }, 4000);
     applyAdmin(s, { t: "reveal" }, 5000);
-    expect(standings(s).find((r) => r.n === 1)!.score).toBe(0);
+    expect(standings(s).find((r) => r.n === 1)!.score).toBe(75.5); // 0 vs 75.5: the new answer, not the old
+    expect(standings(s).find((r) => r.n === 2)!.score).toBe(75.5); // not summed twice
   });
 
   it("rejects junk from a phone", () => {
@@ -154,18 +172,18 @@ describe("question import", () => {
     applyAdmin(s, { t: "reveal" }, 2000);
     expect(applyAdmin(s, { t: "questions", questions: Q }, 3000)).toBeUndefined();
     expect(s.questions.every((q) => !s.results[q.id])).toBe(true);
-    expect(standings(s)[0].score).toBe(4);
+    expect(standings(s)[0].score).toBe(0.5);
   });
 });
 
 describe("score graph", () => {
   it("lists each table's points per question in reveal order, with the rank before the latest one", () => {
     const s = started();
-    applyTable(s, 1, { t: "submit", v: 75 }, 1000); // Q1: table 1 gets 4
-    applyTable(s, 2, { t: "submit", v: 70 }, 1000); // table 2 gets 3
+    applyTable(s, 1, { t: "submit", v: 75 }, 1000); // Q1: table 1 misses by 0.5
+    applyTable(s, 2, { t: "submit", v: 70 }, 1000); // table 2 by 5.5, table 3 didn't answer
     applyAdmin(s, { t: "reveal" }, 2000);
     applyAdmin(s, { t: "start", qid: s.questions[1].id }, 3000);
-    applyTable(s, 2, { t: "submit", v: 40 }, 4000); // Q2: table 2 gets 4
+    applyTable(s, 2, { t: "submit", v: 40 }, 4000); // Q2: table 2 is spot on
     applyAdmin(s, { t: "reveal" }, 5000);
     s.adjust[3] = 1;
     applyAdmin(s, { t: "scores" }, 6000);
@@ -174,9 +192,9 @@ describe("score graph", () => {
     expect(view.board).toEqual({
       lastQNo: 2,
       rows: [
-        { n: 1, pts: [4, 0], adjust: 0, prevRank: 1 },
-        { n: 2, pts: [3, 4], adjust: 0, prevRank: 2 },
-        { n: 3, pts: [0, 0], adjust: 1, prevRank: 3 },
+        { n: 1, pts: [0.5, 60], adjust: 0, prevRank: 1 },
+        { n: 2, pts: [5.5, 0], adjust: 0, prevRank: 2 },
+        { n: 3, pts: [75.5, 60], adjust: 1, prevRank: 3 },
       ],
     });
   });
@@ -190,5 +208,67 @@ describe("score graph", () => {
     expect(buildView(s, { role: "screen" }, new Set(), 4000).board).toBeUndefined();
     applyAdmin(s, { t: "reveal" }, 5000);
     expect(s.played).toEqual([s.questions[1].id, s.questions[0].id]);
+  });
+});
+
+describe("editing questions", () => {
+  const NEW = { prompt: "新しい問題", left: "低い", right: "高い", target: 30.25, comment: "解説" };
+
+  it("adds, edits and deletes one question at a time", () => {
+    const s = initialState(Q);
+    expect(applyAdmin(s, { t: "addQuestion", question: NEW }, 0)).toBeUndefined();
+    expect(s.questions).toHaveLength(3);
+    const added = s.questions[2];
+    expect(added).toMatchObject({ prompt: "新しい問題", target: 30.3 });
+    expect(added.id).not.toBe(s.questions[1].id);
+
+    const edit = { prompt: "直した問題", left: "A", right: "B", target: 10 };
+    expect(applyAdmin(s, { t: "updateQuestion", id: added.id, question: edit }, 0)).toBeUndefined();
+    expect(s.questions[2]).toEqual({ id: added.id, ...edit }); // comment cleared, id kept
+
+    expect(applyAdmin(s, { t: "deleteQuestion", id: s.questions[0].id }, 0)).toBeUndefined();
+    expect(s.questions.map((q) => q.prompt)).toEqual(["朝型？夜型？", "直した問題"]);
+  });
+
+  it("says what is wrong with a question", () => {
+    const s = initialState(Q);
+    expect(applyAdmin(s, { t: "addQuestion", question: { ...NEW, prompt: "  " } }, 0)).toBe("お題を入力してください");
+    expect(applyAdmin(s, { t: "addQuestion", question: { ...NEW, target: 101 } }, 0)).toMatch(/正解/);
+    expect(applyAdmin(s, { t: "addQuestion", question: { ...NEW, target: NaN } }, 0)).toMatch(/正解/);
+    expect(applyAdmin(s, { t: "updateQuestion", id: "nope", question: NEW }, 0)).toBeTruthy();
+    expect(applyAdmin(s, { t: "deleteQuestion", id: "nope" }, 0)).toBeTruthy();
+    expect(s.questions).toHaveLength(2);
+  });
+
+  it("leaves the round on screen alone but lets the others change", () => {
+    const s = started();
+    const [live, other] = s.questions;
+    expect(applyAdmin(s, { t: "updateQuestion", id: live.id, question: NEW }, 1)).toBeTruthy();
+    expect(applyAdmin(s, { t: "deleteQuestion", id: live.id }, 1)).toBeTruthy();
+    expect(applyAdmin(s, { t: "updateQuestion", id: other.id, question: NEW }, 1)).toBeUndefined();
+    expect(applyAdmin(s, { t: "addQuestion", question: NEW }, 1)).toBeUndefined();
+    expect(s.questions[0]).toEqual(live);
+  });
+
+  it("scores a revealed question again when its answer changes", () => {
+    const s = started();
+    applyTable(s, 1, { t: "submit", v: 75 }, 1000);
+    applyAdmin(s, { t: "reveal" }, 2000);
+    const q = s.questions[0];
+    applyAdmin(s, { t: "updateQuestion", id: q.id, question: { ...Q[0], target: 70 } }, 3000);
+    expect(s.results[q.id].points).toEqual({ 1: 5, 2: 70, 3: 70 });
+  });
+
+  it("drops a deleted question's points, and leaves the reveal screen if it was showing", () => {
+    const s = started();
+    applyTable(s, 1, { t: "submit", v: 75 }, 1000);
+    applyAdmin(s, { t: "reveal" }, 2000);
+    const id = s.questions[0].id;
+    expect(applyAdmin(s, { t: "deleteQuestion", id }, 3000)).toBeUndefined();
+    expect(s.results[id]).toBeUndefined();
+    expect(s.played).toEqual([]);
+    expect(s.phase).toBe("lobby");
+    expect(standings(s).every((r) => r.score === 0)).toBe(true);
+    expect(buildView(s, { role: "screen" }, new Set(), 0).question).toBeNull();
   });
 });

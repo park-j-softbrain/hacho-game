@@ -1,5 +1,5 @@
 import { useEffect, useState } from "preact/hooks";
-import type { View } from "../../shared/game";
+import type { QuestionInput, View } from "../../shared/game";
 import { parseQuestions, toTsv } from "../../shared/questions";
 import { Dial, Ends, fmt } from "../Dial";
 import { storage, useGame } from "../net";
@@ -255,7 +255,7 @@ function Answers({ view }: { view: View }) {
             markers={(view.answers ?? []).map((a) => ({
               ...a,
               hollow: !a.submitted,
-              points: view.result?.points[a.n],
+              best: view.result?.ranks[a.n] === 1,
             }))}
             label="回答の分布"
           />
@@ -308,7 +308,7 @@ function Answers({ view }: { view: View }) {
                 <th>チーム</th>
                 <th>回答</th>
                 <th>状態</th>
-                {view.result && <th>今回</th>}
+                {view.result && <th>ズレ</th>}
               </tr>
             </thead>
             <tbody>
@@ -338,7 +338,7 @@ function Answers({ view }: { view: View }) {
                       </span>
                     </td>
                     {view.result && (
-                      <td class="display">{view.result.points[t.n] ?? 0}点</td>
+                      <td class="display">{fmt(view.result.points[t.n] ?? 0)}点</td>
                     )}
                   </tr>
                 );
@@ -355,12 +355,12 @@ function Scores({ view, send }: { view: View; send: Send }) {
   const rows = [...view.tables].sort((a, b) => a.rank - b.rank || a.n - b.n);
   return (
     <section class="panel admin-scores">
-      <h2>スコア</h2>
+      <h2>スコア<span class="answers-target">ズレの合計。少ないほど上位</span></h2>
       <ol class="score-list">
         {rows.map((t) => (
           <li>
             <span
-              class={`rank-badge rank-badge-small${t.score > 0 && t.rank <= 3 ? ` rank-${t.rank}` : ""}`}
+              class={`rank-badge rank-badge-small${view.played > 0 && t.rank <= 3 ? ` rank-${t.rank}` : ""}`}
             >
               {t.rank}
             </span>
@@ -375,7 +375,7 @@ function Scores({ view, send }: { view: View; send: Send }) {
               {t.name}
             </button>
             <span class="score-points">
-              <b class="display">{t.score}</b>点
+              <b class="display">{fmt(t.score)}</b>点
             </span>
             <button
               class="round"
@@ -402,12 +402,35 @@ function Scores({ view, send }: { view: View; send: Send }) {
 function Questions({ view, send }: { view: View; send: Send }) {
   const admin = view.admin!;
   const busy = view.phase === "open" || view.phase === "closed";
+  // The card being edited, or "new" for the blank form at the end.
+  const [editing, setEditing] = useState<string | "new" | null>(null);
+  const save = (message: Parameters<Send>[0]) => {
+    if (send(message)) setEditing(null);
+  };
   return (
     <section class="questions">
       <h2 class="section-title">問題一覧</h2>
       <div class="question-cards">
         {admin.questions.map((q, i) => {
           const live = q.id === view.qid && view.phase !== "lobby";
+          const locked = busy && q.id === view.qid; // the round on screen can't change
+          if (editing === q.id) {
+            return (
+              <QuestionForm
+                title={`Q${i + 1} を編集`}
+                initial={q}
+                note={
+                  q.done
+                    ? "出題済みの問題です。正解を変えると、これまでの得点も新しい正解で計算し直します。"
+                    : undefined
+                }
+                onSave={(question) =>
+                  save({ t: "updateQuestion", id: q.id, question })
+                }
+                onCancel={() => setEditing(null)}
+              />
+            );
+          }
           return (
             <article
               class={`card question-card${live ? " card-dots live" : ""}`}
@@ -437,11 +460,133 @@ function Questions({ view, send }: { view: View; send: Send }) {
               >
                 {q.done || live ? "もう一度" : "出題"}
               </button>
+              <div class="question-edit">
+                <button
+                  class="link"
+                  disabled={locked}
+                  onClick={() => setEditing(q.id)}
+                >
+                  編集
+                </button>
+                <button
+                  class="link link-danger"
+                  disabled={locked}
+                  onClick={() =>
+                    confirm(
+                      `Q${i + 1}「${q.prompt}」を削除しますか？${q.done ? "この問題の得点も消えます。" : ""}`,
+                    ) && send({ t: "deleteQuestion", id: q.id })
+                  }
+                >
+                  削除
+                </button>
+              </div>
             </article>
           );
         })}
+        {editing === "new" ? (
+          <QuestionForm
+            title="問題を追加"
+            onSave={(question) => save({ t: "addQuestion", question })}
+            onCancel={() => setEditing(null)}
+          />
+        ) : (
+          <button class="question-add" onClick={() => setEditing("new")}>
+            ＋ 問題を追加
+          </button>
+        )}
       </div>
     </section>
+  );
+}
+
+function QuestionForm({
+  title,
+  initial,
+  note,
+  onSave,
+  onCancel,
+}: {
+  title: string;
+  initial?: QuestionInput;
+  note?: string;
+  onSave: (q: QuestionInput) => void;
+  onCancel: () => void;
+}) {
+  const [prompt, setPrompt] = useState(initial?.prompt ?? "");
+  const [left, setLeft] = useState(initial?.left ?? "");
+  const [right, setRight] = useState(initial?.right ?? "");
+  const [target, setTarget] = useState(
+    initial ? String(initial.target) : "",
+  );
+  const [comment, setComment] = useState(initial?.comment ?? "");
+  const value = target.trim() === "" ? NaN : Number(target);
+  const valid = prompt.trim() !== "" && value >= 0 && value <= 100;
+  return (
+    <form
+      class="card question-card question-form"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (valid) onSave({ prompt, left, right, target: value, comment });
+      }}
+    >
+      <h3>{title}</h3>
+      <label>
+        お題
+        <input
+          value={prompt}
+          maxLength={80}
+          required
+          onInput={(e) => setPrompt(e.currentTarget.value)}
+        />
+      </label>
+      <div class="question-form-ends">
+        <label>
+          左端（0）
+          <input
+            value={left}
+            maxLength={24}
+            onInput={(e) => setLeft(e.currentTarget.value)}
+          />
+        </label>
+        <label>
+          右端（100）
+          <input
+            value={right}
+            maxLength={24}
+            onInput={(e) => setRight(e.currentTarget.value)}
+          />
+        </label>
+      </div>
+      <label>
+        正解（0〜100）
+        <input
+          type="number"
+          min={0}
+          max={100}
+          step="any"
+          required
+          value={target}
+          onInput={(e) => setTarget(e.currentTarget.value)}
+        />
+      </label>
+      <label>
+        解説（省略可）
+        <input
+          value={comment}
+          maxLength={160}
+          onInput={(e) => setComment(e.currentTarget.value)}
+        />
+      </label>
+      {note && <p class="small">{note}</p>}
+      <div class="controls-buttons">
+        <button class="primary" type="submit" disabled={!valid}>
+          保存
+        </button>
+        <button class="secondary" type="button" onClick={onCancel}>
+          キャンセル
+        </button>
+      </div>
+    </form>
   );
 }
 

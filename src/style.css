@@ -344,42 +344,10 @@ a:hover {
   fill: var(--card);
 }
 
-.wedge {
-  mix-blend-mode: multiply;
-  transform-origin: 100px 100px;
-  animation: grow 0.66s steps(4, end) both;
-}
-
-.wedge-outline {
-  fill: none;
-  stroke: var(--blue);
-  stroke-width: 1.2;
-  stroke-linejoin: round;
-}
-
 .target-line {
-  stroke: var(--mix);
-  stroke-width: 1.6;
+  stroke: var(--pink);
+  stroke-width: 2.6;
   stroke-linecap: round;
-  stroke-dasharray: 1 3;
-}
-
-.band-label circle {
-  fill: var(--card);
-  stroke: var(--blue);
-  stroke-width: 1.2;
-}
-
-.band-label-4 circle {
-  fill: var(--pink);
-}
-
-.band-label text {
-  font-family: var(--display);
-  font-size: 6.5px;
-  fill: var(--mix);
-  text-anchor: middle;
-  dominant-baseline: central;
 }
 
 .needle line {
@@ -2034,4 +2002,64 @@ button.round-fill {
 .question-card button {
   margin-top: 4px;
   min-height: 44px;
+}
+
+/* editing questions on the admin page */
+.question-edit {
+  display: flex;
+  gap: 1rem;
+  justify-content: flex-end;
+}
+
+.question-edit button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.link-danger {
+  color: var(--pink);
+}
+
+.question-add {
+  min-height: 8rem;
+  border: 3px dashed var(--blue);
+  background: transparent;
+  color: var(--blue);
+  font-weight: 900;
+  border-radius: 20px;
+}
+
+.question-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.question-form h3 {
+  margin: 0;
+}
+
+.question-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-weight: 700;
+}
+
+.question-form input {
+  width: 100%;
+}
+
+.question-form-ends {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+}
+
+.board-note {
+  margin-left: 1.2vw;
+  font-size: 0.4em;
+  font-family: inherit;
+  font-weight: 900;
+  color: var(--blue);
 }

@@ -15,12 +15,12 @@ an admin page.
 ## How a round goes
 
 1. The admin presses **▶ Qn を出題**. The question and the timer appear on the projector and on every phone.
-2. Tables turn the needle and press **この位置で回答する**. They can press **修正する** until time runs out. If a table never presses it, the needle's last position counts. A table that never touched the needle has no answer.
+2. Tables turn the needle and press **この位置で回答する**. They can press **修正する** until time runs out. If a table never presses it, the needle's last position counts. A table that never touched the needle has no answer, and scores the worst miss possible for that question (the farther of 0 and 100 from the answer), so skipping never beats guessing.
 3. When time is up (or the admin presses **締め切る**), the projector shows every table's needle, but not the answer.
-4. **正解を発表** shows the scoring wedge, the answer and the points: 4 for being within ±2.5 of the answer, 3 within ±7.5, and 2 within ±12.5, on the 0–100 scale. To change the points, edit `BANDS` in `shared/game.ts`.
-5. **スコアを表示** shows the ranking on each phone and, on the projector, a bar graph of every table's total:
+4. **正解を発表** shows the answer, and each table's miss: the distance between its answer and the answer, on the 0–100 scale. The projector lists the three closest places; each phone shows its own miss and its place for the question. The rule is `pointsFor` in `shared/game.ts`.
+5. **スコアを表示** shows the ranking on each phone and, on the projector, a bar graph of every table's total miss. **The lowest total wins.**
    - one block per question
-   - the latest question's points in pink
+   - the latest question's miss in pink
    - ▲/▼ for how far each table moved since the previous question
 
 The answer is never sent to a phone or to the projector before the reveal. The
@@ -60,7 +60,7 @@ npm run build && npx wrangler deploy --durable-objects-code-update-mode immediat
 ## Before the event
 
 1. Admin → 設定: set the title, the number of tables and the answer time.
-2. Admin → 問題の読み込み: paste your questions from a spreadsheet with these five columns, in this order:
+2. Admin → 問題一覧: add, edit and delete questions one at a time (＋問題を追加, 編集, 削除). The question on screen can't be changed while it is open. Changing the answer of a question that was already revealed scores it again. For many at once, use 問題の読み込み: paste your questions from a spreadsheet with these five columns, in this order:
    - お題 (the question)
    - 左 (left end label)
    - 右 (right end label)

@@ -30,7 +30,7 @@ export function TablePage({ n, k }: { n: number; k: string }) {
           )}
         </div>
         <span class="score-pill">
-          <b>{me.score}</b>点
+          <b>{fmt(me.score)}</b>点
         </span>
       </header>
       {canName && (!me.hasName || renaming) ? (
@@ -95,16 +95,21 @@ function Body({
       const points = result.points[me.n];
       return (
         <div class="phone-round">
-          <Burst label="今回の得点">
+          <Burst label="正解とのズレ">
             {me.answer ? (
               <span class="points">
-                +{points ?? 0}
+                {fmt(points ?? 0)}
                 <small>点</small>
               </span>
             ) : (
               <span class="points points-none">回答なし</span>
             )}
           </Burst>
+          {result.ranks[me.n] != null && (
+            <p class="total-pill">
+              今回 <b>{result.ranks[me.n]}</b>位
+            </p>
+          )}
           <DialCard>
             <Dial
               value={me.answer?.v ?? null}
@@ -121,7 +126,7 @@ function Body({
           </p>
           {result.comment && <p class="small">{result.comment}</p>}
           <p class="total-pill">
-            合計 <b>{me.score}</b>点・<b>{me.rank}</b>位
+            合計 <b>{fmt(me.score)}</b>点・<b>{me.rank}</b>位
           </p>
         </div>
       );
@@ -136,8 +141,9 @@ function Body({
             </span>
           </Burst>
           <p class="total-pill">
-            <b>{me.score}</b>点・{view.tables.length}チーム中
+            <b>{fmt(me.score)}</b>点・{view.tables.length}チーム中
           </p>
+          <p class="small">ズレの合計が少ないほど上位です</p>
           {me.rank > 1 && <p class="big">{chase(view, me.score)}</p>}
           <p>スクリーンをご覧ください</p>
           <button class="link" onClick={onRename}>
@@ -266,12 +272,12 @@ function Chevron({ d }: { d: string }) {
   );
 }
 
-// "2 more points to 3rd place": the gap to the next score above this table's.
+// "1.5 points behind 3rd place": the gap to the next better score.
 function chase(view: View, score: number): string {
   const above = view.tables
-    .filter((t) => t.score > score)
-    .sort((a, b) => a.score - b.score)[0];
-  return above ? `あと${above.score - score}点で${above.rank}位` : "";
+    .filter((t) => t.score < score)
+    .sort((a, b) => b.score - a.score)[0];
+  return above ? `${above.rank}位まで あと${fmt(score - above.score)}点` : "";
 }
 
 function NameForm({
