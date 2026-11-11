@@ -16,7 +16,14 @@ import { Bucket, Limiter } from "./limits";
 
 type Attachment = { role: "screen" } | { role: "admin" } | { role: "table"; n: number };
 
-// Rate limits. Real use is far below these: a phone sends at most ~4 needle moves a second.
+// A page that asks over plain HTTPS (see poll) counts as online for this long
+// after its last request.
+const POLL_ONLINE_MS = 6000;
+// Room for a full question import; anything bigger isn't from the app.
+const MAX_BODY = 256 * 1024;
+
+// Rate limits. Real use is far below these: a page on the HTTPS fallback asks
+// 60 times a minute, and a phone sends at most ~4 needle moves a second.
 const FAILS_PER_MIN = 20; // wrong passwords or QR codes from one IP address, then it waits a minute
 const REQUESTS_PER_MIN = 360; // connections and fallback requests per IP address and page (several screens can share one office address)
 const MAX_SOCKETS = 300; // open connections in total
@@ -31,6 +38,13 @@ export class Game extends DurableObject<Env> {
   private s!: GameState;
   private secret!: string; // signs the per-table QR tokens; survives resets
   private tokens = new Map<number, string>();
+  // Pages that can't keep a WebSocket open (a web filter that breaks the
+  // handshake) ask over HTTPS instead: when each table last asked, and a
+  // revision so an unchanged state isn't sent again.
+  private polledAt = new Map<number, number>();
+  private rev = `${Date.now().toString(36)}-0`;
+  private revCount = 0;
+  private lastOnline = "";
   private fails = new Limiter(FAILS_PER_MIN);
   private requests = new Limiter(REQUESTS_PER_MIN);
   private buckets = new WeakMap<WebSocket, Bucket>();
@@ -51,12 +65,14 @@ export class Game extends DurableObject<Env> {
   }
 
   async fetch(req: Request): Promise<Response> {
+    const ws = req.headers.get("Upgrade") === "websocket";
     const ip = req.headers.get("CF-Connecting-IP") ?? "local";
     // An address that keeps guessing passwords or QR codes is turned away for a minute.
     const att = this.fails.over(ip) ? SLOW_DOWN : await this.authorize(new URL(req.url));
     if (typeof att === "string" && att !== SLOW_DOWN) this.fails.hit(ip);
     const who = typeof att === "string" ? "refused" : att.role === "table" ? `table:${att.n}` : att.role;
-    const busy = !this.requests.hit(`${ip}|${who}`) || this.ctx.getWebSockets().length >= MAX_SOCKETS;
+    const busy = !this.requests.hit(`${ip}|${who}`) || (ws && this.ctx.getWebSockets().length >= MAX_SOCKETS);
+    if (!ws) return busy ? new Response(SLOW_DOWN, { status: 429, headers: { "Retry-After": "10" } }) : this.poll(req, att);
 
     const [client, server] = Object.values(new WebSocketPair());
     if (busy) return closeBusy(client, server);
@@ -102,6 +118,31 @@ export class Game extends DurableObject<Env> {
     if (!bucket.take()) return; // dropped: far faster than the app ever sends
     const error = await this.apply(att, [m]);
     if (error) ws.send(JSON.stringify({ t: "error", msg: error }));
+  }
+
+  // The HTTPS fallback: the body carries the page's queued messages and the
+  // revision it last saw; the reply carries any errors and the state if it changed.
+  private async poll(req: Request, att: Attachment | string): Promise<Response> {
+    if (req.method !== "POST") return new Response("Method not allowed", { status: 405 });
+    if (typeof att === "string") return Response.json({ rev: "", msgs: [{ t: "fatal", msg: att }] });
+    if (Number(req.headers.get("Content-Length") ?? 0) > MAX_BODY) return new Response("Too large", { status: 413 });
+    let body: { rev?: unknown; msgs?: unknown };
+    try {
+      body = await req.json();
+    } catch {
+      return new Response("Bad request", { status: 400 });
+    }
+    if (att.role === "table") this.polledAt.set(att.n, Date.now());
+    const msgs = Array.isArray(body.msgs) ? body.msgs.slice(0, 20) : [];
+    const out: unknown[] = [];
+    if (msgs.length) {
+      const error = await this.apply(att, msgs);
+      if (error) out.push({ t: "error", msg: error });
+    }
+    // a table that just started (or stopped) asking shows as online (or offline)
+    if (this.onlineKey(this.online()) !== this.lastOnline) await this.broadcast();
+    if (body.rev !== this.rev) out.push(await this.viewFor(att, this.online()));
+    return Response.json({ rev: this.rev, msgs: out }, { headers: { "Cache-Control": "no-store" } });
   }
 
   // Applies a page's messages in order and tells everyone; returns the first error.
@@ -171,6 +212,8 @@ export class Game extends DurableObject<Env> {
       .filter((ws) => ws !== gone && ws.readyState === WebSocket.READY_STATE_OPEN);
     const atts = sockets.map((ws) => ws.deserializeAttachment() as Attachment);
     const online = this.online(atts);
+    this.lastOnline = this.onlineKey(online);
+    this.rev = `${this.rev.split("-")[0]}-${++this.revCount}`; // pages on the fallback fetch it next time
     const views = new Map<string, string>(); // one JSON per role (per table for phones)
     for (const [i, ws] of sockets.entries()) {
       const a = atts[i];
@@ -189,13 +232,23 @@ export class Game extends DurableObject<Env> {
     }
   }
 
-  // Tables with a phone connected.
+  // Tables with a phone connected: an open WebSocket, or a recent HTTPS request.
   private online(atts?: Attachment[]): Set<number> {
     atts ??= this.ctx
       .getWebSockets()
       .filter((ws) => ws.readyState === WebSocket.READY_STATE_OPEN)
       .map((ws) => ws.deserializeAttachment() as Attachment);
-    return new Set(atts.flatMap((a) => (a.role === "table" ? [a.n] : [])));
+    const online = new Set(atts.flatMap((a) => (a.role === "table" ? [a.n] : [])));
+    const since = Date.now() - POLL_ONLINE_MS;
+    for (const [n, at] of this.polledAt) {
+      if (at >= since) online.add(n);
+      else this.polledAt.delete(n);
+    }
+    return online;
+  }
+
+  private onlineKey(online: Set<number>): string {
+    return [...online].sort((a, b) => a - b).join(",");
   }
 
   private async viewFor(a: Attachment, online: Set<number>) {

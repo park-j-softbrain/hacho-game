@@ -76,7 +76,7 @@ npm run build && npx wrangler deploy --durable-objects-code-update-mode immediat
 ## If something goes wrong on the day
 
 - **A phone sleeps or drops off Wi-Fi:** it reconnects by itself and gets back its table's answer, score and timer.
-- **A page stays on 接続中…** on a company network: some web filters (i-FILTER) decrypt HTTPS and break WebSockets. Use a phone on mobile data or a personal network instead.
+- **A network blocks the live connection** (some company web filters break WebSockets): the page notices and asks the server about once a second over normal HTTPS instead. Everything works; updates on that device can lag by up to a second. Other devices are not affected.
 - **A phone dies:** scan the same table card with another phone.
 - **Time runs out too early:** use **+15秒** while answers are open, or start the question again from 問題一覧. Playing a question again replaces its earlier points.
 - **A page says アクセスが多すぎます:** the server's rate limits were hit (20 wrong passwords or QR codes from one address in a minute, or far more requests than the app sends). Wait a minute and reload. The limits are at the top of `worker/game.ts`.
@@ -95,7 +95,7 @@ and load without blocking the page, so if Google is slow or blocked the system f
 - `shared/questions.ts`: the sample questions and the spreadsheet import/export
 - `worker/game.ts`: a Durable Object that holds the event
   - keeps the game state in storage
-  - holds the WebSocket connections
+  - holds the WebSocket connections, and answers `POST /api`, the HTTPS fallback for networks that break WebSockets
   - runs the answer timer as an alarm
   - signs the QR tokens
 - `src/`: the Preact pages; each page loads as its own small chunk
