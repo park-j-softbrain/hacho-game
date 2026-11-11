@@ -2063,3 +2063,125 @@ button.round-fill {
   font-weight: 900;
   color: var(--blue);
 }
+
+/* ---- projector: the score band along the bottom ---- */
+
+/* Night-blue on purpose: it reads as an audio equalizer, apart from the paper round above it. */
+.score-band {
+  flex: none;
+  height: 20vh;
+  margin: 0 -1.2vw -1.5vh;
+  border-radius: 2vh;
+  background: #1e1c48;
+  box-shadow: 0.5vh 0.45vh 0 var(--pink);
+  overflow: hidden;
+}
+
+.score-band svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.score-band text {
+  font-family: var(--font);
+  font-weight: 700;
+  text-anchor: middle;
+}
+
+.band-value {
+  fill: #a9a3d9;
+  font-size: 17px;
+}
+
+.band-no {
+  fill: #a9a3d9;
+  font-size: 21px;
+}
+
+.band-win {
+  fill: #ffd23f;
+  font-family: var(--display) !important;
+  font-weight: 400 !important;
+  font-size: 24px;
+}
+
+.band-caption text {
+  text-anchor: inherit;
+}
+
+.band-caption-name {
+  fill: #ffd23f;
+  font-size: 26px;
+}
+
+.band-caption-score {
+  fill: #fff6c8;
+  font-family: var(--display) !important;
+  font-weight: 400 !important;
+  font-size: 34px;
+}
+
+.band-note {
+  fill: #a9a3d9;
+  font-size: 16px;
+  text-anchor: end !important;
+}
+
+.band-beam {
+  animation: band-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes band-pulse {
+  50% {
+    opacity: 0.4;
+  }
+}
+
+/* With the band showing, the round above gets about a fifth less height: shrink its big type to match. */
+.with-band .screen-prompt {
+  font-size: 8.5vh;
+}
+
+.with-band .screen-prompt.prompt-long {
+  font-size: 6vh;
+}
+
+.with-band .screen-prompt.prompt-xlong {
+  font-size: 4.4vh;
+}
+
+.with-band .screen-side {
+  gap: 1.6vh;
+}
+
+.with-band .side-card,
+.with-band .winners {
+  padding-block: 1.6vh;
+}
+
+.with-band .screen-target {
+  font-size: 11vh;
+}
+
+.with-band .screen-big {
+  font-size: 7vh;
+}
+
+.with-band .average-pill {
+  padding-block: 0.6vh;
+}
+
+.with-band .average-pill b {
+  font-size: 5vh;
+}
+
+.with-band .countdown-large .countdown-secs {
+  font-size: 9vh;
+}
+
+.with-band .answered-chip {
+  width: 5.6vh;
+  height: 5.6vh;
+  font-size: 2.5vh;
+}

@@ -1,6 +1,7 @@
 import { useState } from "preact/hooks";
 import type { Board, View } from "../../shared/game";
 import { Dial, Ends, fmt } from "../Dial";
+import { ScoreBand } from "../ScoreBand";
 import { useGame } from "../net";
 import { Banner, Center, Countdown, Logo, PHASE_LABEL } from "../ui";
 
@@ -10,8 +11,10 @@ export function ScreenPage() {
   const { view, status } = useGame("role=screen");
   if (!view) return <Center>接続中…</Center>;
 
+  // the running totals; the ranking screen has its own full chart
+  const band = view.played > 0 && view.phase !== "scores";
   return (
-    <div class="screen">
+    <div class={`screen${band ? " with-band" : ""}`}>
       <Banner status={status} error={null} />
       <header class="screen-head">
         <div class="brand">
@@ -43,6 +46,7 @@ export function ScreenPage() {
       {view.phase === "scores" && view.board && (
         <ScoreChart view={view} board={view.board} />
       )}
+      {band && <ScoreBand tables={view.tables} />}
       <FullscreenButton />
     </div>
   );
