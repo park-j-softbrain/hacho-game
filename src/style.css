@@ -2138,55 +2138,55 @@ button.round-fill {
   }
 }
 
-/* With the band or the heart cards showing, the round gets less room: shrink its big type to match. */
-:is(.with-band, .with-hearts) .screen-prompt {
+/* With either band showing, the round gets less room: shrink its big type to match. */
+:is(.with-band, .with-tables) .screen-prompt {
   font-size: 8.5vh;
 }
 
-:is(.with-band, .with-hearts) .screen-prompt.prompt-long {
+:is(.with-band, .with-tables) .screen-prompt.prompt-long {
   font-size: 6vh;
 }
 
-:is(.with-band, .with-hearts) .screen-prompt.prompt-xlong {
+:is(.with-band, .with-tables) .screen-prompt.prompt-xlong {
   font-size: 4.4vh;
 }
 
-:is(.with-band, .with-hearts) .screen-side {
+:is(.with-band, .with-tables) .screen-side {
   gap: 1.6vh;
 }
 
-:is(.with-band, .with-hearts) .side-card,
-:is(.with-band, .with-hearts) .winners {
+:is(.with-band, .with-tables) .side-card,
+:is(.with-band, .with-tables) .winners {
   padding-block: 1.6vh;
 }
 
-:is(.with-band, .with-hearts) .screen-target {
+:is(.with-band, .with-tables) .screen-target {
   font-size: 11vh;
 }
 
-:is(.with-band, .with-hearts) .screen-big {
+:is(.with-band, .with-tables) .screen-big {
   font-size: 7vh;
 }
 
-:is(.with-band, .with-hearts) .average-pill {
+:is(.with-band, .with-tables) .average-pill {
   padding-block: 0.6vh;
 }
 
-:is(.with-band, .with-hearts) .average-pill b {
+:is(.with-band, .with-tables) .average-pill b {
   font-size: 5vh;
 }
 
-:is(.with-band, .with-hearts) .countdown-large .countdown-secs {
+:is(.with-band, .with-tables) .countdown-large .countdown-secs {
   font-size: 9vh;
 }
 
-:is(.with-band, .with-hearts) .answered-chip {
+:is(.with-band, .with-tables) .answered-chip {
   width: 5.6vh;
   height: 5.6vh;
   font-size: 2.5vh;
 }
 
-/* ---- projector: heart cards around the edges ---- */
+/* ---- projector: the score view switch ---- */
 
 .view-switch {
   position: fixed;
@@ -2226,223 +2226,313 @@ button.round-fill {
   color: var(--card);
 }
 
-.screen.with-hearts {
-  padding: 1.6vh 1.2vw;
-}
+/* ---- projector: the tables band, two rows of tables with healthbars ---- */
 
-.arena {
-  --gap: 1vw;
-  --card-w: calc((100vw - 2.4vw - (var(--cols) - 1) * var(--gap)) / var(--cols));
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
+/* The tables band is taller than the equalizer: the round above gets smaller again. */
+.screen.with-tables {
+  padding-block: 2vh 3vh;
   gap: 1.6vh;
 }
 
-.arena-row {
-  display: grid;
-  grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
-  gap: var(--gap);
+.with-tables .screen-head h1 {
+  font-size: 3.4vh;
 }
 
-/* a short bottom row still ends at the right-hand corner */
-.arena-row-bottom {
-  direction: rtl;
-}
-
-.arena-row-bottom > * {
-  direction: ltr;
-}
-
-.arena-mid {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  gap: var(--gap);
-}
-
-.arena-col {
-  flex: none;
-  width: var(--card-w);
-  display: flex;
-  flex-direction: column;
-  justify-content: space-around;
-}
-
-.arena-center {
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1.6vh;
-  padding: 0 0.8vw;
-}
-
-.with-hearts .screen-head {
-  font-size: 2.6vh;
-}
-
-.with-hearts .screen-head h1 {
-  font-size: 3vh;
-}
-
-.with-hearts .screen-prompt {
-  font-size: 6.4vh;
-}
-
-.with-hearts .screen-prompt.prompt-long {
-  font-size: 4.8vh;
-}
-
-.with-hearts .screen-prompt.prompt-xlong {
-  font-size: 3.6vh;
-}
-
-.with-hearts .screen-target {
-  font-size: 9vh;
-}
-
-.with-hearts .winners-row {
-  font-size: 2.4vh;
-}
-
-.with-hearts .answered-chip {
-  width: 4.6vh;
-  height: 4.6vh;
-  font-size: 2.1vh;
-}
-
-.hp-card {
-  position: relative;
-  height: 11.5vh;
-  padding: 1vh 0.8vw;
-  border: 3px solid var(--blue);
-  border-radius: 1.6vh;
-  background: var(--card);
-  box-shadow: 0.5vh 0.45vh 0 var(--pink);
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  min-width: 0;
-}
-
-.hp-card.hp-lead {
-  border: 5px solid #ffc21a;
-}
-
-.hp-top {
-  display: flex;
-  align-items: center;
-  gap: 0.5vw;
-  min-width: 0;
-}
-
-.hp-no {
-  flex: none;
-  width: 3.4vh;
-  height: 3.4vh;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background: var(--blue);
-  color: var(--card);
-  box-shadow: 0.3vh 0.25vh 0 var(--pink);
-  font-family: var(--display);
+.with-tables .screen-main .chip {
   font-size: 1.9vh;
 }
 
-.hp-name {
-  flex: 1;
+.with-tables .screen-prompt {
+  font-size: 6.4vh;
+}
+
+.with-tables .screen-prompt.prompt-long {
+  font-size: 4.8vh;
+}
+
+.with-tables .screen-prompt.prompt-xlong {
+  font-size: 3.6vh;
+}
+
+.with-tables .screen-main .ends {
+  font-size: 2.6vh;
+}
+
+.with-tables .screen-side {
+  gap: 1.2vh;
+}
+
+.with-tables .side-card,
+.with-tables .winners {
+  padding-block: 1.2vh;
+}
+
+.with-tables .screen-target {
+  font-size: 8vh;
+}
+
+.with-tables .winners-row {
+  font-size: 2.4vh;
+}
+
+.with-tables .average-pill b {
+  font-size: 4vh;
+}
+
+.with-tables .answered-chip {
+  width: 4.6vh;
+  height: 4.6vh;
+  font-size: 2vh;
+}
+
+@property --hp {
+  syntax: "<integer>";
+  inherits: false;
+  initial-value: 0;
+}
+
+.table-band {
+  flex: none;
+  height: 33vh;
+  margin: 0 -1.2vw -1.5vh;
+  padding: 1.4vh 0.8vw 0.4vh;
+  border-radius: 2vh;
+  background: var(--card);
+  border: 2px solid var(--blue);
+  box-shadow: 0.5vh 0.45vh 0 var(--pink);
+  display: grid;
+  grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
+  grid-template-rows: 1fr 1fr;
+}
+
+.seat {
+  position: relative;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5vh;
+  --w: min(7.4vw, 11.6vh);
+}
+
+.seat-spot {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: calc(var(--w) * 1.3);
+  height: 16vh;
+  transform: translateX(-50%);
+  border-radius: 50%;
+}
+
+.r1 .seat-spot { background: radial-gradient(closest-side, #ffc21ab0, #ffc21a00); }
+.r2 .seat-spot { background: radial-gradient(closest-side, #8fa6dbc0, #8fa6db00); }
+.r3 .seat-spot { background: radial-gradient(closest-side, #e39a5bb0, #e39a5b00); }
+
+.seat-hp {
+  position: relative;
+  z-index: 2;
+  width: min(100%, calc(var(--w) * 1.2));
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.3vh;
+}
+
+.seat-num {
+  display: flex;
+  align-items: center;
+  gap: 0.4vw;
+  font-family: var(--display);
+  font-size: 2.1vh;
+  line-height: 1;
+  color: var(--mix);
   white-space: nowrap;
-  font-size: 2.2vh;
+}
+
+.seat-num small {
+  margin-left: auto;
+  font-family: var(--font);
   font-weight: 900;
+  font-size: 1.15vh;
+  color: var(--blue);
+  opacity: 0.75;
+}
+
+/* The number counts down with the bar: a typed custom property animates, a counter prints it. */
+.seat-v {
+  counter-reset: hp var(--hp);
+  transition: --hp 1.5s cubic-bezier(0.3, 0, 0.3, 1) 1.8s;
+}
+
+.seat-v::after {
+  content: counter(hp);
+}
+
+.seat-rank {
+  font-size: 1.5vh;
+  line-height: 1.3;
+  padding: 0 0.5vh;
+  border-radius: 999px;
+  border: 2px solid var(--mix);
+  box-shadow: 1.5px 1.5px 0 var(--mix);
   color: var(--mix);
 }
 
-/* the hit pops out over the card's top edge, leaving the name its room */
-.hp-hit {
-  position: absolute;
-  top: -1.3vh;
-  right: 5.5vw;
-  padding: 0 0.5vw;
+.r1 .seat-rank { background: #ffc21a; }
+.r2 .seat-rank { background: #c9d2e3; }
+.r3 .seat-rank { background: #e39a5b; }
+
+.seat-bar {
+  position: relative;
+  height: 1.9vh;
   border-radius: 999px;
+  background: #e4dccb;
+  border: 2px solid var(--mix);
+  overflow: hidden;
+}
+
+.seat-bar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 999px;
+}
+
+/* A hit: the miss pops up, the bar drops 1.8s later, the white trail drains after that. */
+.seat-fill {
   background: var(--pink);
-  color: #fff;
+  transition: width 1.5s cubic-bezier(0.5, 0, 0.3, 1) 1.8s, background-color 0.4s 3.6s;
+}
+
+.seat-lag {
+  background: #fff;
+  transition: width 1.2s cubic-bezier(0.6, 0, 0.4, 1) 3.3s;
+}
+
+.r1 .seat-fill { background-color: #ffb000; }
+
+.low .seat-fill {
+  background-color: #e8344e;
+  animation: seat-low 1s ease-in-out infinite;
+}
+
+/* one tick per question (100 HP each) */
+.seat-ticks {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    90deg,
+    transparent 0 calc(100% / var(--segs) - 2px),
+    #32187155 calc(100% / var(--segs) - 2px) calc(100% / var(--segs))
+  );
+}
+
+.seat-hit {
+  position: absolute;
+  z-index: 4;
+  right: -28%;
+  top: 2%;
   font-family: var(--display);
-  font-size: 1.7vh;
-  animation: pop 0.66s steps(4, end) 0.15s both;
+  font-size: 2.2vh;
+  line-height: 1.2;
+  color: #fff;
+  background: #e8344e;
+  border: 2px solid var(--mix);
+  border-radius: 999px;
+  padding: 0 0.7vh;
+  animation: seat-hit 0.3s cubic-bezier(0.3, 1.6, 0.5, 1) both;
 }
 
-.hp-crown {
-  flex: none;
-  height: 2.8vh;
+.seat-hit.zero {
+  background: #2fa36b;
 }
 
-.hp-crown path,
-.hp-crown rect {
-  fill: #ffc21a;
-  stroke: var(--mix);
-  stroke-width: 3;
+.seat-table {
+  position: relative;
+  z-index: 1;
+}
+
+.seat-svg {
+  display: block;
+  width: var(--w);
+  height: auto;
+}
+
+.seat-svg .o {
+  stroke: #1d2245;
+  stroke-width: 6;
   stroke-linejoin: round;
 }
 
-.hp-value {
-  flex: none;
+.seat-svg text {
   font-family: var(--display);
-  font-size: 2.6vh;
-  color: var(--mix);
+  fill: #fff;
+  text-anchor: middle;
 }
 
-.hp-hearts {
-  display: flex;
-  gap: 0.35vw;
+.shake .seat-svg {
+  animation: seat-shake 0.45s ease-in-out 1.9s;
 }
 
-.heart {
-  position: relative;
-  flex: 1 1 0;
-  max-width: 4.6vh;
-  aspect-ratio: 44 / 41;
-}
-
-.heart svg {
+.seat-crown {
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  overflow: visible;
+  left: 34%;
+  top: 6%;
+  width: 42%;
+  transform: translateX(-50%);
+  filter: drop-shadow(0 0 1vh #ffc21a);
+  animation: seat-bob 2.4s ease-in-out infinite;
 }
 
-.heart-empty path {
-  fill: #3255a414;
-  stroke: var(--blue);
-  stroke-width: 2.5;
-}
-
-.heart-lag path {
-  fill: var(--pink);
-}
-
-.heart-full path {
-  fill: var(--blue);
-}
-
-.hp-lead .heart-full path {
+.seat-crown path,
+.seat-crown rect {
   fill: #ffc21a;
+  stroke: var(--mix);
+  stroke-width: 3.5;
+  stroke-linejoin: round;
+}
+
+.seat-crown .gem {
+  fill: var(--pink);
   stroke: var(--mix);
   stroke-width: 2;
 }
 
-/* A hit: the hearts drop first, then the pink chunk left behind drains away. */
-.heart-full {
-  transition: clip-path 0.9s ease-out 0.3s;
+/* During a reveal a new place (tag, glow, crown) appears only once the bars have settled. */
+.reveal :is(.seat-rank, .seat-spot) {
+  animation: seat-in 0.4s ease-out 3.6s both;
 }
 
-.heart-lag {
-  transition: clip-path 0.9s ease-in 1.6s;
+.reveal .seat-crown {
+  animation: seat-in 0.4s ease-out 3.6s both, seat-bob 2.4s ease-in-out 4s infinite;
+}
+
+@keyframes seat-in {
+  from { opacity: 0; scale: 0.6; }
+}
+
+@keyframes seat-hit {
+  from { opacity: 0; transform: translateY(1vh) scale(0.6); }
+}
+
+@keyframes seat-low {
+  50% { opacity: 0.55; }
+}
+
+@keyframes seat-bob {
+  50% { transform: translateX(-50%) translateY(-0.6vh) rotate(6deg); }
+}
+
+@keyframes seat-shake {
+  20% { transform: translateX(-5px) rotate(-2deg); }
+  50% { transform: translateX(4px) rotate(1.5deg); }
+  80% { transform: translateX(-2px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .seat-crown,
+  .low .seat-fill,
+  .shake .seat-svg {
+    animation: none;
+  }
 }

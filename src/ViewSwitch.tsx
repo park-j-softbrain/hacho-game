@@ -1,13 +1,15 @@
 import { useEffect, useState } from "preact/hooks";
 
 // Which score view the projector shows. Kept per browser, like a theme setting.
-export type ScoreView = "band" | "hearts";
+export type ScoreView = "band" | "tables";
 const KEY = "screen-score-view";
 
 export function useScoreView(): [ScoreView, (v: ScoreView) => void] {
   const [mode, setMode] = useState<ScoreView>(() => {
     try {
-      return localStorage.getItem(KEY) === "hearts" ? "hearts" : "band";
+      const v = localStorage.getItem(KEY);
+      // "hearts" was the old name of the tables view
+      return v === "tables" || v === "hearts" ? "tables" : "band";
     } catch {
       return "band";
     }
@@ -42,7 +44,7 @@ export function ViewSwitch({ mode, onChange }: { mode: ScoreView; onChange: (v: 
   }, []);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      if (e.key === "v" || e.key === "V") onChange(mode === "band" ? "hearts" : "band");
+      if (e.key === "v" || e.key === "V") onChange(mode === "band" ? "tables" : "band");
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
@@ -53,8 +55,8 @@ export function ViewSwitch({ mode, onChange }: { mode: ScoreView; onChange: (v: 
       <button aria-pressed={mode === "band"} onClick={() => onChange("band")}>
         イコライザー
       </button>
-      <button aria-pressed={mode === "hearts"} onClick={() => onChange("hearts")}>
-        ハート
+      <button aria-pressed={mode === "tables"} onClick={() => onChange("tables")}>
+        テーブル
       </button>
     </div>
   );

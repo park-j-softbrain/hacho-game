@@ -1,8 +1,8 @@
 import { useState } from "preact/hooks";
 import type { Board, View } from "../../shared/game";
 import { Dial, Ends, fmt } from "../Dial";
-import { HeartArena } from "../HeartArena";
 import { ScoreBand } from "../ScoreBand";
+import { TableBand } from "../TableBand";
 import { ViewSwitch, useScoreView } from "../ViewSwitch";
 import { useGame } from "../net";
 import { Banner, Center, Countdown, Logo, PHASE_LABEL } from "../ui";
@@ -17,11 +17,13 @@ export function ScreenPage() {
   const round =
     (view.phase === "open" || view.phase === "closed" || view.phase === "reveal") && !!view.question;
   // the running totals; the ranking screen has its own full chart
-  const band = mode === "band" && view.played > 0 && view.phase !== "scores";
-  const hearts = mode === "hearts" && round;
+  const totals = view.phase !== "scores" && (view.played > 0 || (mode === "tables" && round));
+  const band = totals && mode === "band";
+  const tables = totals && mode === "tables";
 
-  const content = (
-    <>
+  return (
+    <div class={`screen${band ? " with-band" : ""}${tables ? " with-tables" : ""}`}>
+      <Banner status={status} error={null} />
       <header class="screen-head">
         <div class="brand">
           <Logo />
@@ -49,14 +51,8 @@ export function ScreenPage() {
       {view.phase === "scores" && view.board && (
         <ScoreChart view={view} board={view.board} />
       )}
-    </>
-  );
-
-  return (
-    <div class={`screen${band ? " with-band" : ""}${hearts ? " with-hearts" : ""}`}>
-      <Banner status={status} error={null} />
-      {hearts ? <HeartArena view={view}>{content}</HeartArena> : content}
       {band && <ScoreBand tables={view.tables} />}
+      {tables && <TableBand view={view} />}
       <FullscreenButton />
       <ViewSwitch mode={mode} onChange={setMode} />
     </div>
