@@ -133,6 +133,8 @@ function Body({
         </div>
       );
     }
+    case "finale":
+      return <PhoneFinale view={view} />;
     case "scores":
       return (
         <Center>
@@ -243,6 +245,62 @@ function Answering({ view, send }: { view: View; send: Send }) {
 }
 
 const PHONE_SOUNDS = ["submit"] as const;
+
+// The phone's side of the finale: wait while the projector reveals 3位 → 1位,
+// then show this table's final place. When 1位 comes out live, hold the phone's
+// answer back until the projector's drumroll is over.
+const HOLD_MS = 5000;
+
+function PhoneFinale({ view }: { view: View }) {
+  const me = view.me!;
+  const f = view.finale!;
+  const done = f.total > 0 && f.shown >= f.total;
+  const [held, setHeld] = useState(false);
+  const wasDone = useRef(done);
+  useEffect(() => {
+    if (done && !wasDone.current) {
+      setHeld(true);
+      const t = setTimeout(() => setHeld(false), HOLD_MS);
+      wasDone.current = done;
+      return () => clearTimeout(t);
+    }
+    wasDone.current = done;
+  }, [done]);
+
+  if (!done || held) {
+    return (
+      <Center>
+        <Burst>
+          <span class="display">{f.shown === 0 ? "全問終了！" : "発表中"}</span>
+        </Burst>
+        {f.shown === 0 ? (
+          <p class="big">
+            全ての問題が完了しました。
+            <br />
+            結果発表までもうしばらくお待ちください
+          </p>
+        ) : (
+          <p class="big">結果発表中です</p>
+        )}
+        <p>スクリーンをご覧ください</p>
+      </Center>
+    );
+  }
+  return (
+    <Center>
+      <Burst label="最終結果">
+        <span class="points">
+          {me.rank}
+          <small>位</small>
+        </span>
+      </Burst>
+      <p class="big display">{me.rank <= 3 ? "おめでとうございます！" : "おつかれさまでした！"}</p>
+      <p class="total-pill">
+        <b>{fmt(me.score)}</b>点・{view.tables.length}チーム中
+      </p>
+    </Center>
+  );
+}
 
 function QuestionHead({ view }: { view: View }) {
   return (

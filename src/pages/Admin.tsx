@@ -178,7 +178,7 @@ function Controls({ view, send }: { view: View; send: Send }) {
             正解を発表
           </button>
         )}
-        {view.phase === "reveal" && (
+        {view.phase === "reveal" && !view.final && (
           <button
             class={next ? "secondary" : "primary"}
             onClick={() => send({ t: "scores" })}
@@ -186,14 +186,17 @@ function Controls({ view, send }: { view: View; send: Send }) {
             スコアを表示
           </button>
         )}
-        {!open && view.phase !== "closed" && next && (
+        {!open && view.phase !== "closed" && view.phase !== "finale" && next && (
           <button class="primary" onClick={() => start(next.id)}>
             ▶ Q{questions.indexOf(next) + 1} を出題（{next.seconds}秒）
           </button>
         )}
-        {!open && view.phase !== "closed" && !next && (
-          <span>全問終了しました</span>
+        {!open && view.phase !== "closed" && view.phase !== "finale" && !next && (
+          <button class="primary" onClick={() => send({ t: "finale" })}>
+            全問終了画面へ
+          </button>
         )}
+        {view.phase === "finale" && view.finale && <FinaleButtons view={view} send={send} />}
         {(open || view.phase === "closed") && (
           <button
             class="secondary"
@@ -210,6 +213,38 @@ function Controls({ view, send }: { view: View; send: Send }) {
         )}
       </div>
     </section>
+  );
+}
+
+// The finale: 最終結果発表 (3位), then 2位を発表, then 1位を発表. Ties share a
+// place; fix them first with ±1 in スコア if you want one table per place.
+function FinaleButtons({ view, send }: { view: View; send: Send }) {
+  const f = view.finale!;
+  const next = f.places[f.shown];
+  const ties = f.places.filter((p) => p.tables.length > 1);
+  const missing = f.places.length > 0 ? [3, 2].filter((r) => !f.places.some((p) => p.rank === r)) : [];
+  return (
+    <>
+      {next ? (
+        <button class="primary" onClick={() => send({ t: "finaleNext" })}>
+          {f.shown === 0 ? `最終結果発表（${next.rank}位）` : `${next.rank}位を発表`}
+        </button>
+      ) : (
+        <button class="primary" onClick={() => send({ t: "scores" })}>
+          スコアを表示
+        </button>
+      )}
+      {f.shown === 0 && ties.length > 0 && (
+        <span class="finale-tie">
+          同点：
+          {ties.map((p) => `${p.rank}位（${p.tables.map((t) => t.n).join("・")}）`).join("、")}
+          。このままだと同じ段に並びます
+        </span>
+      )}
+      {f.shown === 0 && missing.length > 0 && (
+        <span class="muted">同点のため、{missing.join("・")}位はいません</span>
+      )}
+    </>
   );
 }
 

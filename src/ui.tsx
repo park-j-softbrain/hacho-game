@@ -89,4 +89,5 @@ export const PHASE_LABEL = {
   closed: "締め切り",
   reveal: "正解発表中",
   scores: "スコア表示中",
+  finale: "最終結果発表",
 } as const;

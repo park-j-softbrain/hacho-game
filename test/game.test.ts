@@ -7,6 +7,7 @@ import {
   GRACE_MS,
   initialState,
   missPenalty,
+  podium,
   pointsFor,
   roundRanks,
   standings,
@@ -295,5 +296,36 @@ describe("editing questions", () => {
     expect(s.phase).toBe("lobby");
     expect(standings(s).every((r) => r.score === 0)).toBe(true);
     expect(buildView(s, { role: "screen" }, new Set(), 0).question).toBeNull();
+  });
+});
+
+describe("finale", () => {
+  const scored = (pts: Record<number, number>) => {
+    const s = initialState(Q);
+    s.tableCount = 5;
+    for (const [n, p] of Object.entries(pts)) s.adjust[Number(n)] = p;
+    return s;
+  };
+
+  it("reveals 3位, 2位, then 1位, and tells the projector only what is out", () => {
+    const s = scored({ 1: 30, 2: 10, 3: 20, 4: 40, 5: 50 });
+    expect(applyAdmin(s, { t: "finaleNext" }, 0)).toBeTruthy(); // not in the finale yet
+    applyAdmin(s, { t: "finale" }, 0);
+    expect(buildView(s, { role: "screen" }, new Set(), 0).finale).toEqual({ total: 3, shown: 0, places: [] });
+    applyAdmin(s, { t: "finaleNext" }, 0);
+    const v = buildView(s, { role: "screen" }, new Set(), 0).finale!;
+    expect(v.places).toEqual([{ rank: 3, tables: [{ n: 1, name: "テーブル1", score: 30 }] }]);
+    applyAdmin(s, { t: "finaleNext" }, 0);
+    applyAdmin(s, { t: "finaleNext" }, 0);
+    expect(buildView(s, { role: "screen" }, new Set(), 0).finale!.places.map((p) => p.tables[0].n)).toEqual([1, 3, 2]);
+    expect(applyAdmin(s, { t: "finaleNext" }, 0)).toBeTruthy(); // nothing left
+  });
+
+  it("puts tied tables on one step, and skips 3位 when two tables share 2位", () => {
+    const s = scored({ 1: 10, 2: 20, 3: 20, 4: 40, 5: 50 });
+    expect(podium(s).map((p) => [p.rank, p.tables.map((t) => t.n)])).toEqual([
+      [2, [2, 3]],
+      [1, [1]],
+    ]);
   });
 });

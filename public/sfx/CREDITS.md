@@ -18,3 +18,4 @@ is required; the sources are listed here so they can be found again.
 | hp_low.mp3 | Bleeper 1 | magnuswaker | https://freesound.org/people/magnuswaker/sounds/522162 |
 | fanfare.mp3 | Tada Fanfare A | plasterbrain | https://freesound.org/people/plasterbrain/sounds/397355 |
 | hp_down.mp3 | High Score Fill - Descending Fastest | TheAtomicBrain | https://freesound.org/people/TheAtomicBrain/sounds/194181 |
+| fanfare_first.mp3 | Tada Fanfare A, played twice and pitched up (+4, then +9 semitones) with an echo | plasterbrain | https://freesound.org/people/plasterbrain/sounds/397355 |

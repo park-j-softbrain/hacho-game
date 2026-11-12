@@ -55,10 +55,10 @@ export function useReveal(view: View | null) {
 
 // The other sounds, keyed off changes in what the server sends.
 export function useScreenSounds(view: View | null, stage: Stage, live: boolean, hp: boolean) {
-  const last = useRef<{ phase?: string; qid?: string | null; online?: number; final?: boolean }>({});
+  const last = useRef<{ phase?: string; qid?: string | null; online?: number }>({});
   const timeUp = useRef<string | null>(null);
 
-  // phase changes: a new question, answering closed, the final results
+  // phase changes: a new question, answering closed, a table joining (the finale plays its own)
   useEffect(() => {
     if (!view) return;
     const p = last.current;
@@ -70,9 +70,8 @@ export function useScreenSounds(view: View | null, stage: Stage, live: boolean, 
         play("time_up");
       }
       if (view.phase === "lobby" && p.online !== undefined && online > p.online) play("join");
-      if (view.phase === "scores" && view.final && !(p.phase === "scores" && p.final)) play("fanfare");
     }
-    last.current = { phase: view.phase, qid: view.qid, online, final: view.final };
+    last.current = { phase: view.phase, qid: view.qid, online };
   });
 
   // the last ten seconds tick, then time is up

@@ -1,6 +1,7 @@
 import { useState } from "preact/hooks";
 import type { Board, View } from "../../shared/game";
 import { Dial, Ends, fmt } from "../Dial";
+import { FINALE_SOUNDS, Finale } from "../Finale";
 import { ScoreBand } from "../ScoreBand";
 import { TableBand } from "../TableBand";
 import { SoundHint, ViewSwitch, useScoreView } from "../ViewSwitch";
@@ -22,7 +23,7 @@ export function ScreenPage() {
   const round =
     (view.phase === "open" || view.phase === "closed" || view.phase === "reveal") && !!view.question;
   // the running totals; the ranking screen has its own full chart
-  const totals = view.phase !== "scores" && (view.played > 0 || (mode === "tables" && round));
+  const totals = view.phase !== "scores" && view.phase !== "finale" && (view.played > 0 || (mode === "tables" && round));
   const band = totals && mode === "band";
   const tables = totals && mode === "tables";
   // Until the reveal's results show, the bands keep the totals from before it.
@@ -30,7 +31,7 @@ export function ScreenPage() {
   const shown: View = intro ? { ...view, phase: "closed", tables: before, result: undefined } : view;
 
   return (
-    <div class={`screen${band ? " with-band" : ""}${tables ? " with-tables" : ""}`}>
+    <div class={`screen${band ? " with-band" : ""}${tables ? " with-tables" : ""}${view.phase === "finale" ? " with-finale" : ""}`}>
       <Banner status={status} error={null} />
       <header class="screen-head">
         <div class="brand">
@@ -38,7 +39,7 @@ export function ScreenPage() {
           <h1 class="display print">{view.title}</h1>
         </div>
         <div class="screen-chips">
-          {view.question && view.phase !== "scores" && (
+          {view.question && view.phase !== "scores" && view.phase !== "finale" && (
             <span class="chip chip-q">
               Q{view.qNo} / {view.qCount}
             </span>
@@ -56,6 +57,7 @@ export function ScreenPage() {
       </header>
       {view.phase === "lobby" && <Lobby view={view} />}
       {round && <Round view={view} stage={stage} />}
+      {view.phase === "finale" && view.finale && <Finale view={view} />}
       {view.phase === "scores" && view.board && (
         <ScoreChart view={view} board={view.board} />
       )}
@@ -92,7 +94,7 @@ function Lobby({ view }: { view: View }) {
 
 const SCREEN_SOUNDS = [
   "question_start", "tick", "time_up", "join", "drumroll", "needle_sweep",
-  "correct", "incorrect", "hp_down", "hp_low", "fanfare",
+  "correct", "incorrect", "hp_down", "hp_low", ...FINALE_SOUNDS,
 ] as const;
 
 function Round({ view, stage }: { view: View; stage: Stage }) {

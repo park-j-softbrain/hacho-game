@@ -19,7 +19,7 @@ export const DEFAULT_SECONDS = 60;
 export const MIN_SECONDS = 5;
 export const MAX_SECONDS = 600;
 
-export type Phase = "lobby" | "open" | "closed" | "reveal" | "scores";
+export type Phase = "lobby" | "open" | "closed" | "reveal" | "scores" | "finale";
 
 export type Answer = { v: number; submitted: boolean };
 
@@ -43,6 +43,7 @@ export type GameState = {
   startedAt: number;
   deadline: number;
   answers: Record<number, Answer>; // current round, by table
+  shown: number; // finale: how many podium places are out (0 = the "全問終了" screen)
 };
 
 // Accept answers that were in flight when the clock ran out.
@@ -97,6 +98,7 @@ export function initialState(questions: QuestionInput[]): GameState {
     startedAt: 0,
     deadline: 0,
     answers: {},
+    shown: 0,
   };
   setQuestions(s, questions);
   return s;
@@ -132,6 +134,17 @@ export function standings(s: GameState): Standing[] {
   return rows;
 }
 
+// The finale's podium, revealed 3位 → 2位 → 1位. A place nobody holds (two
+// tables tied for 2位 leave no 3位) is skipped.
+export type Place = { rank: number; tables: { n: number; name: string; score: number }[] };
+
+export function podium(s: GameState): Place[] {
+  const rows = standings(s);
+  return [3, 2, 1]
+    .map((rank) => ({ rank, tables: rows.filter((r) => r.rank === rank).map(({ n, name, score }) => ({ n, name, score })) }))
+    .filter((p) => p.tables.length > 0);
+}
+
 export function currentQuestion(s: GameState): Question | null {
   return s.questions.find((q) => q.id === s.qid) ?? null;
 }
@@ -155,6 +168,8 @@ export type AdminMsg =
   | { t: "reveal" }
   | { t: "scores" }
   | { t: "lobby" }
+  | { t: "finale" } // the "全問終了" screen; phones wait for the results
+  | { t: "finaleNext" } // the next podium place
   | { t: "addTime"; seconds: number }
   | { t: "settings"; title?: string; tableCount?: number }
   | { t: "rename"; n: number; name: string }
@@ -225,6 +240,17 @@ export function applyAdmin(s: GameState, m: AdminMsg, now: number): string | und
     case "lobby":
       s.phase = "lobby";
       return;
+    case "finale":
+      s.phase = "finale";
+      s.shown = 0;
+      return;
+    case "finaleNext": {
+      if (s.phase !== "finale") return "最終結果発表の画面ではありません";
+      const total = podium(s).length;
+      if ((s.shown ?? 0) >= total) return "すべての順位を発表しました";
+      s.shown = (s.shown ?? 0) + 1;
+      return;
+    }
     case "addTime":
       if (s.phase !== "open") return "回答受付中ではありません";
       s.deadline = Math.max(s.deadline, now) + clampInt(m.seconds, 1, 600) * 1000;
@@ -292,6 +318,7 @@ export function applyAdmin(s: GameState, m: AdminMsg, now: number): string | und
         startedAt: 0,
         deadline: 0,
         answers: {},
+        shown: 0,
       } satisfies Partial<GameState>);
       return;
   }
@@ -401,6 +428,8 @@ export type View = {
   me?: { n: number; name: string; hasName: boolean; answer: Answer | null; score: number; rank: number };
   // the score graph, sent while the ranking is shown
   board?: Board;
+  // the finale: places revealed so far (3位 first); the admin gets every place
+  finale?: { total: number; shown: number; places: Place[] };
   admin?: {
     questions: (Question & { done: boolean })[];
     tableCount: number;
@@ -475,6 +504,11 @@ export function buildView(s: GameState, viewer: Viewer, online: Set<number>, now
     view.result = { target: q.target, comment: q.comment, points: r?.points ?? {}, ranks: r ? roundRanks(r) : {} };
   }
   if (s.phase === "scores") view.board = buildBoard(s);
+  if (s.phase === "finale") {
+    const places = podium(s);
+    const shown = Math.min(s.shown ?? 0, places.length);
+    view.finale = { total: places.length, shown, places: viewer.role === "admin" ? places : places.slice(0, shown) };
+  }
   if (viewer.role === "table") {
     const n = viewer.n;
     view.me = {

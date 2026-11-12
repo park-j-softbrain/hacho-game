@@ -15,7 +15,8 @@ export type Sfx =
   | "incorrect"
   | "hp_down"
   | "hp_low"
-  | "fanfare";
+  | "fanfare"
+  | "fanfare_first"; // 1位: the fanfare twice, higher, longer and louder
 
 const VOLUME: Partial<Record<Sfx, number>> = { tick: 0.5, join: 0.6, hp_low: 0.7 };
 const KEY = "sound-on";
@@ -59,7 +60,8 @@ export function unlockSound(preload: readonly Sfx[]) {
   notify();
 }
 
-export function play(name: Sfx) {
+// rate > 1 plays higher and faster (2位 uses the 3位 fanfare at 1.12).
+export function play(name: Sfx, rate = 1) {
   if (muted || !ctx || ctx.state !== "running") return;
   const c = ctx;
   load(name).then((buf) => {
@@ -68,6 +70,7 @@ export function play(name: Sfx) {
     const gain = c.createGain();
     gain.gain.value = VOLUME[name] ?? 1;
     src.buffer = buf;
+    src.playbackRate.value = rate;
     src.connect(gain).connect(c.destination);
     src.start();
   });
