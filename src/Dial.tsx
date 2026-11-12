@@ -44,9 +44,10 @@ type Props = {
   onCommit?: (v: number) => void; // on release
   disabled?: boolean;
   label?: string;
+  sweep?: boolean; // the answer line swings in from the left end (projector reveal)
 };
 
-export function Dial({ value, target, markers, onChange, onCommit, disabled, label }: Props) {
+export function Dial({ value, target, markers, onChange, onCommit, disabled, label, sweep }: Props) {
   const svg = useRef<SVGSVGElement>(null);
   const dragging = useRef(false);
   const last = useRef<number | null>(null);
@@ -104,7 +105,7 @@ export function Dial({ value, target, markers, onChange, onCommit, disabled, lab
       <path class="dial-outline" d={TRACK} />
       <path class="dial-tick" d={TICKS.major} />
       <path class="dial-tick dial-tick-minor" d={TICKS.minor} />
-      {target != null && <TargetLine target={target} />}
+      {target != null && <TargetLine target={target} sweep={sweep} />}
       {markers && <Markers markers={markers} />}
       {value != null && <Needle v={value} />}
       <circle class="dial-hub" cx={CX} cy={CY} r={8} />
@@ -113,10 +114,18 @@ export function Dial({ value, target, markers, onChange, onCommit, disabled, lab
   );
 }
 
-function TargetLine({ target }: { target: number }) {
-  const [x1, y1] = at(target, 10);
-  const [x2, y2] = at(target, R + 3);
-  return <line class="target-line" x1={x1} y1={y1} x2={x2} y2={y2} />;
+// Drawn pointing at 0 and turned to the answer, so a sweep is one CSS rotation.
+function TargetLine({ target, sweep }: { target: number; sweep?: boolean }) {
+  return (
+    <line
+      class={`target-line${sweep ? " target-sweep" : ""}`}
+      x1={CX - 10}
+      y1={CY}
+      x2={CX - R - 3}
+      y2={CY}
+      style={{ transform: `rotate(${(target / 100) * 180}deg)` }}
+    />
+  );
 }
 
 function Needle({ v }: { v: number }) {

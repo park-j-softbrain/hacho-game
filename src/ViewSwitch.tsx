@@ -1,4 +1,5 @@
 import { useEffect, useState } from "preact/hooks";
+import { setMuted, useSound } from "./sound";
 
 // Which score view the projector shows. Kept per browser, like a theme setting.
 export type ScoreView = "band" | "tables";
@@ -58,6 +59,21 @@ export function ViewSwitch({ mode, onChange }: { mode: ScoreView; onChange: (v: 
       <button aria-pressed={mode === "tables"} onClick={() => onChange("tables")}>
         テーブル
       </button>
+      <SoundButton />
     </div>
   );
+}
+
+function SoundButton() {
+  const { muted } = useSound([]);
+  return (
+    <button class="view-switch-sound" aria-pressed={!muted} onClick={() => setMuted(!muted)}>
+      {muted ? "音オフ" : "音オン"}
+    </button>
+  );
+}
+
+// Browsers keep a page silent until someone clicks it: say so on the projector.
+export function SoundHint() {
+  return <div class="sound-hint">クリックすると音が出ます</div>;
 }

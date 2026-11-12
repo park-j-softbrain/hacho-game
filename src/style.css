@@ -348,6 +348,25 @@ a:hover {
   stroke: var(--pink);
   stroke-width: 2.6;
   stroke-linecap: round;
+  transform-box: view-box;
+  transform-origin: 100px 100px; /* the dial's hub */
+}
+
+/* The reveal: the answer line swings in from the left end and settles. Matches SWEEP_MS in Screen.tsx. */
+.target-sweep {
+  animation: target-sweep 2s cubic-bezier(0.2, 0.7, 0.25, 1) both;
+}
+
+@keyframes target-sweep {
+  from {
+    transform: rotate(0deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .target-sweep {
+    animation-duration: 0.01s;
+  }
 }
 
 .needle line {
@@ -1632,10 +1651,6 @@ label.inline input {
   overflow-x: auto;
 }
 
-.controls-time {
-  margin-left: auto;
-}
-
 .answers-dial .legend {
   justify-content: center;
   margin-top: 6px;
@@ -2224,6 +2239,28 @@ button.round-fill {
 .view-switch button[aria-pressed="true"] {
   background: var(--blue);
   color: var(--card);
+}
+
+.view-switch .view-switch-sound {
+  border-left: 2px solid var(--blue);
+}
+
+.view-switch .view-switch-sound[aria-pressed="true"] {
+  background: var(--pink);
+}
+
+.sound-hint {
+  position: fixed;
+  left: 12px;
+  bottom: 52px;
+  z-index: 20;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--mix);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 900;
+  pointer-events: none;
 }
 
 /* ---- projector: the tables band, two rows of tables with healthbars ---- */

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import type { View } from "../../shared/game";
 import { Dial, Ends, fmt } from "../Dial";
 import { serverNow, useGame, useTick } from "../net";
+import { play, useSound } from "../sound";
 import { Banner, Burst, Center, Countdown } from "../ui";
 
 export function TablePage({ n, k }: { n: number; k: string }) {
@@ -10,6 +11,7 @@ export function TablePage({ n, k }: { n: number; k: string }) {
     `role=table&n=${n}&k=${encodeURIComponent(k)}`,
   );
   const [renaming, setRenaming] = useState(false);
+  useSound(PHONE_SOUNDS);
 
   if (fatal) return <Center>{fatal}</Center>;
   if (!view?.me) return <Center>接続中…</Center>;
@@ -227,6 +229,7 @@ function Answering({ view, send }: { view: View; send: Send }) {
           onClick={() => {
             clearTimeout(moveTimer.current);
             send({ t: "submit", v: pos });
+            play("submit");
           }}
         >
           {timeUp ? "時間切れ" : "この位置で回答する"}
@@ -238,6 +241,8 @@ function Answering({ view, send }: { view: View; send: Send }) {
     </div>
   );
 }
+
+const PHONE_SOUNDS = ["submit"] as const;
 
 function QuestionHead({ view }: { view: View }) {
   return (

@@ -3,8 +3,10 @@ import type { Board, View } from "../../shared/game";
 import { Dial, Ends, fmt } from "../Dial";
 import { ScoreBand } from "../ScoreBand";
 import { TableBand } from "../TableBand";
-import { ViewSwitch, useScoreView } from "../ViewSwitch";
+import { SoundHint, ViewSwitch, useScoreView } from "../ViewSwitch";
 import { useGame } from "../net";
+import { type Stage, useReveal, useScreenSounds } from "../reveal";
+import { useSound } from "../sound";
 import { Banner, Center, Countdown, Logo, PHASE_LABEL } from "../ui";
 
 // The projector. Shows nothing secret before the reveal: the server only sends
@@ -12,6 +14,9 @@ import { Banner, Center, Countdown, Logo, PHASE_LABEL } from "../ui";
 export function ScreenPage() {
   const { view, status } = useGame("role=screen");
   const [mode, setMode] = useScoreView();
+  const sound = useSound(SCREEN_SOUNDS);
+  const { stage, before, live } = useReveal(view);
+  useScreenSounds(view, stage, live, mode === "tables");
   if (!view) return <Center>接続中…</Center>;
 
   const round =
@@ -20,6 +25,9 @@ export function ScreenPage() {
   const totals = view.phase !== "scores" && (view.played > 0 || (mode === "tables" && round));
   const band = totals && mode === "band";
   const tables = totals && mode === "tables";
+  // Until the reveal's results show, the bands keep the totals from before it.
+  const intro = stage !== "done";
+  const shown: View = intro ? { ...view, phase: "closed", tables: before, result: undefined } : view;
 
   return (
     <div class={`screen${band ? " with-band" : ""}${tables ? " with-tables" : ""}`}>
@@ -47,14 +55,15 @@ export function ScreenPage() {
         </div>
       </header>
       {view.phase === "lobby" && <Lobby view={view} />}
-      {round && <Round view={view} />}
+      {round && <Round view={view} stage={stage} />}
       {view.phase === "scores" && view.board && (
         <ScoreChart view={view} board={view.board} />
       )}
-      {band && <ScoreBand tables={view.tables} />}
-      {tables && <TableBand view={view} />}
+      {band && <ScoreBand tables={shown.tables} />}
+      {tables && <TableBand view={shown} />}
       <FullscreenButton />
       <ViewSwitch mode={mode} onChange={setMode} />
+      {!sound.ready && !sound.muted && <SoundHint />}
     </div>
   );
 }
@@ -81,15 +90,21 @@ function Lobby({ view }: { view: View }) {
   );
 }
 
-function Round({ view }: { view: View }) {
+const SCREEN_SOUNDS = [
+  "question_start", "tick", "time_up", "join", "drumroll", "needle_sweep",
+  "correct", "incorrect", "hp_down", "hp_low", "fanfare",
+] as const;
+
+function Round({ view, stage }: { view: View; stage: Stage }) {
   const q = view.question!;
+  const intro = stage !== "done";
   const result = view.result;
   const markers =
     view.phase === "open"
       ? undefined
       : (view.answers ?? []).map((a) => ({
           ...a,
-          best: result?.ranks[a.n] === 1,
+          best: !intro && result?.ranks[a.n] === 1,
         }));
   const long =
     q.prompt.length > 32
@@ -104,7 +119,8 @@ function Round({ view }: { view: View }) {
         <h2 class={`screen-prompt display print${long}`}>{q.prompt}</h2>
         <div class="dial-box">
           <Dial
-            target={result?.target}
+            target={stage === "drum" ? undefined : result?.target}
+            sweep={stage === "sweep"}
             markers={markers}
             label={`ダイヤル。${q.left}から${q.right}`}
           />
@@ -113,14 +129,14 @@ function Round({ view }: { view: View }) {
       </div>
       <aside class="screen-side">
         {view.phase === "open" && <Answering view={view} />}
-        {view.phase === "closed" && (
+        {(view.phase === "closed" || (view.phase === "reveal" && intro)) && (
           <div class="card card-dots side-card">
             <p class="screen-big display print">締め切り！</p>
             <p class="screen-sub">正解は…？</p>
           </div>
         )}
-        {view.phase === "reveal" && result && <Result view={view} />}
-        {view.phase !== "open" && view.average != null && (
+        {view.phase === "reveal" && !intro && result && <Result view={view} />}
+        {view.phase !== "open" && !intro && view.average != null && (
           <div class="average-pill">
             <span>みんなの平均</span>
             <b class="display">{fmt(view.average)}</b>
