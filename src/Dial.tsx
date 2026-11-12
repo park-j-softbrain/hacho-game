@@ -1,6 +1,9 @@
 import { useId, useRef } from "preact/hooks";
+import { type Scale, formatValue, fractionOf, snap } from "../shared/game";
 
-// A half-circle dial: 0 at the left end, 100 at the right end. Drawn like a
+// A half-circle dial from the question's left end to its right end (0–100 when
+// the labels aren't numbers). Values come in and go out in the question's own
+// units; inside, positions run 0 at the left end to 100 at the right. Drawn like a
 // two-ink risograph print: blue halftone track, a pink target line, and
 // slightly misregistered pink "plates" under the needle.
 const CX = 100;
@@ -36,7 +39,10 @@ const TICKS = (() => {
 // hollow: a needle the table hasn't sent yet (admin view); best: the closest answer
 export type Marker = { n: number; v: number; best?: boolean; hollow?: boolean };
 
+const PLAIN: Scale = { min: 0, max: 100, unit: "", step: 1 };
+
 type Props = {
+  scale?: Scale; // the question's range; 0–100 in steps of 1 if left out
   value?: number | null; // this table's needle
   target?: number | null; // draws the answer line
   markers?: Marker[]; // every table's needle (projector / admin)
@@ -47,10 +53,11 @@ type Props = {
   sweep?: boolean; // the answer line swings in from the left end (projector reveal)
 };
 
-export function Dial({ value, target, markers, onChange, onCommit, disabled, label, sweep }: Props) {
+export function Dial({ scale = PLAIN, value, target, markers, onChange, onCommit, disabled, label, sweep }: Props) {
   const svg = useRef<SVGSVGElement>(null);
   const dragging = useRef(false);
   const last = useRef<number | null>(null);
+  const pos = (v: number) => 100 * fractionOf(scale, v);
   // Pattern ids must be unique when two dials share a page.
   const id = useId().replace(/[^\w-]/g, "");
   const interactive = !!onChange && !disabled;
@@ -59,7 +66,7 @@ export function Dial({ value, target, markers, onChange, onCommit, disabled, lab
     const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(svg.current!.getScreenCTM()!.inverse());
     let a = Math.atan2(CY - p.y, p.x - CX);
     if (a < 0) a = p.x < CX ? Math.PI : 0; // below the dial: snap to the nearer end
-    return Math.round(100 * (1 - a / Math.PI));
+    return snap(scale, scale.min + (1 - a / Math.PI) * (scale.max - scale.min));
   };
 
   const down = (e: PointerEvent) => {
@@ -90,7 +97,7 @@ export function Dial({ value, target, markers, onChange, onCommit, disabled, lab
       class={`dial${interactive ? " dial-live" : ""}`}
       viewBox="-10 -10 220 120"
       role="img"
-      aria-label={label ?? (value != null ? `ダイヤル。針は${value}の位置` : "ダイヤル")}
+      aria-label={label ?? (value != null ? `ダイヤル。針は${formatValue(value, scale.unit)}の位置` : "ダイヤル")}
       onPointerDown={down}
       onPointerMove={move}
       onPointerUp={up}
@@ -105,9 +112,9 @@ export function Dial({ value, target, markers, onChange, onCommit, disabled, lab
       <path class="dial-outline" d={TRACK} />
       <path class="dial-tick" d={TICKS.major} />
       <path class="dial-tick dial-tick-minor" d={TICKS.minor} />
-      {target != null && <TargetLine target={target} sweep={sweep} />}
-      {markers && <Markers markers={markers} />}
-      {value != null && <Needle v={value} />}
+      {target != null && <TargetLine target={pos(target)} sweep={sweep} />}
+      {markers && <Markers markers={markers.map((m) => ({ ...m, v: pos(m.v) }))} />}
+      {value != null && <Needle v={pos(value)} />}
       <circle class="dial-hub" cx={CX} cy={CY} r={8} />
       <circle class="dial-hub-dot" cx={CX} cy={CY} r={3} />
     </svg>
@@ -198,6 +205,6 @@ export function Ends({ left, right }: { left: string; right: string }) {
   );
 }
 
-export function fmt(v: number): string {
-  return Number.isInteger(v) ? String(v) : v.toFixed(1);
+export function fmt(v: number, unit = ""): string {
+  return formatValue(v, unit);
 }

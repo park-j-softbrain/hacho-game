@@ -3,13 +3,13 @@ import { fmt } from "./Dial";
 
 // The projector's other score view: every table drawn along the bottom in two
 // rows, its number on the front and a healthbar above it. A table starts with
-// 100 HP per question and every reveal takes off its miss, slowly: the miss pops
+// HP equal to all the questions' worth (配点) added up, and every reveal takes off its points, slowly: they pop
 // up, then the bar drops, then the white trail behind it drains, and only then
 // do the 1位〜3位 tags and the crown move (the delays live in style.css).
 export function TableBand({ view }: { view: View }) {
   const t = view.tables;
   if (t.length === 0) return null;
-  const max = Math.max(1, view.qCount) * 100;
+  const max = Math.max(1, view.maxScore);
   const ranked = view.played > 0;
   const leaders = ranked ? t.filter((r) => r.rank === 1) : [];
   const hp = (r: TableRow) => Math.min(max, Math.max(0, max - r.score));

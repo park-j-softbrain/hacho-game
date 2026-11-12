@@ -798,12 +798,24 @@ circle.needle-ink {
 }
 
 .nudge-value {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  white-space: nowrap;
   font-family: var(--display);
   font-size: 3.2rem;
   line-height: 1;
   color: var(--mix);
   text-shadow: 3px 2px 0 var(--pink);
   font-variant-numeric: tabular-nums;
+}
+
+.nudge-value.long {
+  font-size: 2.3rem;
+}
+
+.nudge-value.longer {
+  font-size: 1.7rem;
 }
 
 .phone-round > button.primary {
@@ -2840,4 +2852,9 @@ button.round-fill {
   .confetti {
     display: none;
   }
+}
+
+.question-form .error {
+  color: #c2185b;
+  font-weight: 900;
 }

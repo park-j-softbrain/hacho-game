@@ -1,5 +1,16 @@
 import { useState } from "preact/hooks";
-import { DEFAULT_SECONDS, MAX_SECONDS, MIN_SECONDS, type QuestionInput, type View } from "../../shared/game";
+import {
+  DEFAULT_SECONDS,
+  DEFAULT_WORTH,
+  MAX_SECONDS,
+  MIN_SECONDS,
+  type QuestionInput,
+  type View,
+  formatValue,
+  questionProblem,
+  rangeOf,
+  scaleOf,
+} from "../../shared/game";
 import { parseQuestions, toTsv } from "../../shared/questions";
 import { Dial, Ends, fmt } from "../Dial";
 import { storage, useGame } from "../net";
@@ -262,17 +273,20 @@ function Answers({ view }: { view: View }) {
     );
   }
   const values = [...answers.values()].map((a) => a.v);
+  const sc = scaleOf(q);
+  const u = (v: number) => fmt(v, sc.unit);
   return (
     <section class="panel">
       <h2>
         回答状況
         <span class="answers-target">
-          正解 <b class="display">{fmt(q.target)}</b>（管理者のみ表示）
+          正解 <b class="display">{u(q.target)}</b>（管理者のみ表示）
         </span>
       </h2>
       <div class="answers">
         <div class="answers-dial">
           <Dial
+            scale={sc}
             target={q.target}
             markers={(view.answers ?? []).map((a) => ({
               ...a,
@@ -302,21 +316,21 @@ function Answers({ view }: { view: View }) {
             <div class="stat stat-pink">
               <span>平均</span>
               <b class="display">
-                {view.average != null ? fmt(view.average) : "—"}
+                {view.average != null ? u(view.average) : "—"}
               </b>
             </div>
             <div class="stat stat-wide">
               <span>
                 最小{" "}
                 <b class="display">
-                  {values.length ? Math.min(...values) : "—"}
+                  {values.length ? u(Math.min(...values)) : "—"}
                 </b>
               </span>
               <span>/</span>
               <span>
                 最大{" "}
                 <b class="display">
-                  {values.length ? Math.max(...values) : "—"}
+                  {values.length ? u(Math.max(...values)) : "—"}
                 </b>
               </span>
             </div>
@@ -347,7 +361,7 @@ function Answers({ view }: { view: View }) {
                       />
                       {t.name}
                     </td>
-                    <td class="display num">{a ? a.v : "—"}</td>
+                    <td class="display num">{a ? u(a.v) : "—"}</td>
                     <td>
                       <span
                         class={`status ${a ? (a.submitted ? "status-sent" : "status-unsent") : "status-none"}`}
@@ -467,8 +481,9 @@ function Questions({ view, send }: { view: View; send: Send }) {
               </div>
               <p class="question-prompt">{q.prompt}</p>
               <p class="question-meta">
-                正解 <b class="display">{fmt(q.target)}</b>・{q.left} ↔{" "}
-                {q.right}・{q.seconds}秒
+                正解 <b class="display">{fmt(q.target, scaleOf(q).unit)}</b>・{q.left} ↔{" "}
+                {q.right}・{q.seconds}秒・配点{q.worth}
+                {q.step !== undefined && `・刻み${fmt(q.step, scaleOf(q).unit)}`}
               </p>
               <button
                 class={q.done || live ? "secondary" : "primary"}
@@ -537,26 +552,33 @@ function QuestionForm({
   const [prompt, setPrompt] = useState(initial?.prompt ?? "");
   const [left, setLeft] = useState(initial?.left ?? "");
   const [right, setRight] = useState(initial?.right ?? "");
-  const [target, setTarget] = useState(
-    initial ? String(initial.target) : "",
-  );
+  const [target, setTarget] = useState(initial ? String(initial.target) : "");
   const [comment, setComment] = useState(initial?.comment ?? "");
   const [seconds, setSeconds] = useState(String(initial?.seconds ?? DEFAULT_SECONDS));
-  const value = target.trim() === "" ? NaN : Number(target);
-  const secs = seconds.trim() === "" ? NaN : Number(seconds);
-  const valid =
-    prompt.trim() !== "" &&
-    value >= 0 &&
-    value <= 100 &&
-    Number.isInteger(secs) &&
-    secs >= MIN_SECONDS &&
-    secs <= MAX_SECONDS;
+  const [worth, setWorth] = useState(String(initial?.worth ?? DEFAULT_WORTH));
+  const [step, setStep] = useState(initial?.step !== undefined ? String(initial.step) : "");
+  const num = (v: string) => (v.trim() === "" ? NaN : Number(v));
+  const q: QuestionInput = {
+    prompt,
+    left,
+    right,
+    target: num(target),
+    comment,
+    seconds: num(seconds),
+    worth: num(worth),
+    ...(step.trim() !== "" ? { step: num(step) } : {}),
+  };
+  const range = rangeOf(left, right);
+  const sc = scaleOf({ left, right });
+  const problem = target.trim() === "" ? null : questionProblem(q);
+  const valid = prompt.trim() !== "" && target.trim() !== "" && !problem;
+  const span = `${formatValue(range.min, range.unit)}〜${formatValue(range.max, range.unit)}`;
   return (
     <form
       class="card question-card question-form"
       onSubmit={(e) => {
         e.preventDefault();
-        if (valid) onSave({ prompt, left, right, target: value, comment, seconds: secs });
+        if (valid) onSave(q);
       }}
     >
       <h3>{title}</h3>
@@ -571,7 +593,7 @@ function QuestionForm({
       </label>
       <div class="question-form-ends">
         <label>
-          左端（0）
+          左端
           <input
             value={left}
             maxLength={24}
@@ -579,7 +601,7 @@ function QuestionForm({
           />
         </label>
         <label>
-          右端（100）
+          右端
           <input
             value={right}
             maxLength={24}
@@ -587,12 +609,13 @@ function QuestionForm({
           />
         </label>
       </div>
+      <p class="small">
+        左右が「0m」「5,000m」のように数字で始まると、その範囲と単位でダイヤルを読みます。今の範囲：{span}
+      </p>
       <label>
-        正解（0〜100）
+        正解（{span}）
         <input
           type="number"
-          min={0}
-          max={100}
           step="any"
           required
           value={target}
@@ -619,6 +642,29 @@ function QuestionForm({
           onInput={(e) => setSeconds(e.currentTarget.value)}
         />
       </label>
+      <label>
+        配点（範囲の端から端までずれたときの点数）
+        <input
+          type="number"
+          min={1}
+          step={1}
+          required
+          value={worth}
+          onInput={(e) => setWorth(e.currentTarget.value)}
+        />
+      </label>
+      <label>
+        針の刻み（空欄なら{fmt(sc.step, sc.unit)}）
+        <input
+          type="number"
+          min={0}
+          step="any"
+          value={step}
+          placeholder={String(sc.step)}
+          onInput={(e) => setStep(e.currentTarget.value)}
+        />
+      </label>
+      {problem && <p class="small error">{problem}</p>}
       {note && <p class="small">{note}</p>}
       <div class="controls-buttons">
         <button class="primary" type="submit" disabled={!valid}>
@@ -680,14 +726,16 @@ function Import({ view, send }: { view: View; send: Send }) {
     <section class="panel">
       <h2>問題の読み込み</h2>
       <p class="muted">
-        スプレッドシートで「お題・左・右・正解(0〜100)・解説・所要時間(秒)」の6列を作り、範囲をコピーして貼り付けてください。見出し行はあってもかまいません。解説は省略でき、所要時間が空欄の問題は60秒になります。
+        スプレッドシートで「お題・左・右・正解・解説・所要時間(秒)・配点・針の刻み」の8列を作り、範囲をコピーして貼り付けてください。見出し行はあってもかまいません。
+        左右が「0m」「5,000m」のように数字で始まると、その範囲と単位でダイヤルを読みます。正解と針の刻みはその単位で書きます（5,000mの問題なら 3776）。
+        解説・所要時間・配点・針の刻みは空欄にでき、それぞれ「なし」「60秒」「100」「範囲の約1%」になります。点数は「ズレ ÷ 範囲の幅 × 配点」です。
         読み込むと問題一覧が置き換わります。これまでの得点は残ります。
       </p>
       <textarea
         rows={8}
         value={text}
         placeholder={
-          "お題\t左\t右\t正解(0-100)\t解説\t所要時間(秒)\n富士山の高さは？\t0m\t5,000m\t75.5\t3,776m\t45"
+          "お題\t左\t右\t正解\t解説\t所要時間(秒)\t配点\t針の刻み\n富士山の高さは？\t0m\t5,000m\t3776\t剣ヶ峰の標高\t45\t200\t10"
         }
         onInput={(e) => setText(e.currentTarget.value)}
       />

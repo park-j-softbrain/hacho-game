@@ -6,9 +6,12 @@ import {
   closeIfExpired,
   GRACE_MS,
   initialState,
+  migrate,
   missPenalty,
   podium,
   pointsFor,
+  scaleOf,
+  snap,
   roundRanks,
   standings,
   type GameState,
@@ -16,7 +19,7 @@ import {
 import { parseQuestions, toTsv } from "../shared/questions";
 
 const Q = [
-  { prompt: "富士山の高さ", left: "0m", right: "5000m", target: 75.5, comment: "3,776m" },
+  { prompt: "森林の割合", left: "0%", right: "100%", target: 75.5, comment: "約3分の2" },
   { prompt: "朝型？夜型？", left: "朝型", right: "夜型", target: 40 },
 ];
 
@@ -29,12 +32,61 @@ function started(now = 0): GameState {
 
 describe("scoring", () => {
   it("scores the distance from the target, and the worst possible miss for no answer", () => {
-    expect(pointsFor(75.5, 75.5)).toBe(0);
-    expect(pointsFor(75, 75.5)).toBe(0.5);
-    expect(pointsFor(64, 75.5)).toBe(11.5);
-    expect(pointsFor(0.1, 0.3)).toBe(0.2); // no floating-point tails
-    expect(missPenalty(75.5)).toBe(75.5);
-    expect(missPenalty(40)).toBe(60);
+    const q = { left: "ナシ", right: "アリ", target: 75.5, worth: 100 };
+    expect(pointsFor(q, 75.5)).toBe(0);
+    expect(pointsFor(q, 75)).toBe(0.5);
+    expect(pointsFor(q, 64)).toBe(11.5);
+    expect(pointsFor({ ...q, target: 0.3 }, 0.1)).toBe(0.2); // no floating-point tails
+    expect(missPenalty(q)).toBe(75.5);
+    expect(missPenalty({ ...q, target: 40 })).toBe(60);
+  });
+
+  it("scores the miss as a share of the question's range, times its worth", () => {
+    const fuji = { left: "0m", right: "5,000m", target: 2700, worth: 100 };
+    expect(pointsFor(fuji, 2750)).toBe(1); // |2700 − 2750| × 100 ÷ 5000
+    expect(pointsFor({ ...fuji, worth: 200 }, 2750)).toBe(2);
+    expect(missPenalty(fuji)).toBe(54); // the farther end, 0m
+    expect(pointsFor({ left: "-30℃", right: "40℃", target: 12, worth: 70 }, 2)).toBe(10);
+  });
+
+  it("reads the dial's range, unit and step from the end labels", () => {
+    expect(scaleOf({ left: "0m", right: "5,000m" })).toEqual({ min: 0, max: 5000, unit: "m", step: 50 });
+    expect(scaleOf({ left: "0m", right: "5000m", step: 10 })).toEqual({ min: 0, max: 5000, unit: "m", step: 10 });
+    expect(scaleOf({ left: "0%", right: "100%", step: 0.2 })).toEqual({ min: 0, max: 100, unit: "%", step: 0.2 });
+    expect(scaleOf({ left: "1900年", right: "2025年" })).toEqual({ min: 1900, max: 2025, unit: "年", step: 1 });
+    expect(scaleOf({ left: "−30℃", right: "４０℃" })).toEqual({ min: -30, max: 40, unit: "℃", step: 0.5 });
+    expect(scaleOf({ left: "ナシ", right: "アリ" })).toEqual({ min: 0, max: 100, unit: "", step: 1 });
+    expect(scaleOf({ left: "0m", right: "5000m", step: 1 }).step).toBe(50); // finer than 1/1000 of the range: the default
+    const fuji = scaleOf({ left: "0m", right: "5000m", step: 10 });
+    expect(snap(fuji, 2746)).toBe(2750);
+    expect(snap(fuji, 6000)).toBe(5000);
+    expect(snap(scaleOf({ left: "0%", right: "100%", step: 0.2 }), 33.33)).toBe(33.4);
+  });
+
+  it("snaps a phone's needle onto the question's steps", () => {
+    const s = initialState([{ prompt: "富士山", left: "0m", right: "5000m", target: 3776, step: 10, worth: 200 }]);
+    s.tableCount = 2;
+    applyAdmin(s, { t: "start", qid: s.questions[0].id }, 0);
+    applyTable(s, 1, { t: "submit", v: 3784 }, 1000);
+    expect(s.answers[1].v).toBe(3780);
+    applyAdmin(s, { t: "reveal" }, 2000);
+    expect(s.results[s.questions[0].id].points).toEqual({ 1: 0.2, 2: 151 }); // 4m × 200 ÷ 5000; no answer: 3776m × 200 ÷ 5000
+    expect(buildView(s, { role: "screen" }, new Set(), 0).maxScore).toBe(200);
+  });
+
+  it("moves targets and answers saved on the old 0–100 scale onto each question's range", () => {
+    const s = initialState([]);
+    s.questions = [
+      { id: "q1", prompt: "富士山", left: "0m", right: "5,000m", target: 75.5, seconds: 60 } as never,
+      { id: "q2", prompt: "朝型？", left: "朝型", right: "夜型", target: 40, seconds: 60 } as never,
+    ];
+    s.results = { q1: { answers: { 1: 80 }, points: { 1: 4.5 } } };
+    s.version = undefined;
+    migrate(s);
+    expect(s.questions.map((q) => [q.target, q.worth])).toEqual([[3775, 100], [40, 100]]);
+    expect(s.results.q1).toEqual({ answers: { 1: 4000 }, points: { 1: 4.5 } });
+    migrate(s); // only once
+    expect(s.questions[0].target).toBe(3775);
   });
 
   it("ranks the closest answer first, with ties sharing a rank", () => {
@@ -152,10 +204,10 @@ const parsed = (text: string) => {
 
 describe("question import", () => {
   it("reads rows pasted from a spreadsheet, skipping the header", () => {
-    const text = "お題\t左\t右\t正解\t解説\n富士山の高さ\t0m\t5000m\t７５.５%\t3,776m\n\n朝型？\t朝型\t夜型\t40\n";
+    const text = "お題\t左\t右\t正解\t解説\n森林の割合\t0%\t100%\t７５.５%\t約3分の2\n\n朝型？\t朝型\t夜型\t40\n";
     expect(parseQuestions(text)).toEqual({
       questions: [
-        { prompt: "富士山の高さ", left: "0m", right: "5000m", target: 75.5, comment: "3,776m" },
+        { prompt: "森林の割合", left: "0%", right: "100%", target: 75.5, comment: "約3分の2" },
         { prompt: "朝型？", left: "朝型", right: "夜型", target: 40 },
       ],
     });
@@ -179,15 +231,32 @@ describe("question import", () => {
     expect(s.deadline).toBe(46000);
   });
 
+  it("reads 正解 in the question's unit, 配点 from the 7th column and 針の刻み from the 8th", () => {
+    const text = "お題\t左\t右\t正解\t解説\t所要時間\t配点\t針の刻み\n富士山\t0m\t5,000m\t3,776m\t剣ヶ峰\t45\t200\t10\n朝型？\t朝型\t夜型\t40";
+    expect(parseQuestions(text)).toEqual({
+      questions: [
+        { prompt: "富士山", left: "0m", right: "5,000m", target: 3776, comment: "剣ヶ峰", seconds: 45, worth: 200, step: 10 },
+        { prompt: "朝型？", left: "朝型", right: "夜型", target: 40 },
+      ],
+    });
+    expect(initialState(parsed(text)).questions.map((q) => [q.worth, q.step])).toEqual([[200, 10], [100, undefined]]);
+    expect(parseQuestions("a\t0m\t5000m\t100\t\t\t1.5")).toEqual({ error: "1行目: 配点は1以上の整数にしてください" });
+    expect(parseQuestions("a\t0m\t5000m\t100\t\t\t0")).toEqual({ error: "1行目: 配点は1以上の整数にしてください" });
+    expect(parseQuestions("a\t0m\t5000m\t100\t\t\t\t1")).toEqual({
+      error: "1行目: 針の刻みは5m〜5,000mの数字にしてください（空欄なら50m）",
+    });
+  });
+
   it("points at the bad row", () => {
-    expect(parseQuestions("a\tb\tc\t50\nx\ty\tz\t120")).toEqual({ error: "2行目: 正解（4列目）は0〜100の数字にしてください" });
+    expect(parseQuestions("a\tb\tc\t50\nx\ty\tz\t120")).toEqual({ error: "2行目: 正解は0〜100の数字にしてください" });
+    expect(parseQuestions("a\t0m\t5000m\t6000")).toEqual({ error: "1行目: 正解は0m〜5,000mの数字にしてください" });
     expect(parseQuestions("a\t\tc\t50")).toEqual({ error: "1行目: お題・左・右の3つを入れてください" });
   });
 
   it("round-trips through the export", () => {
     const s = initialState(Q);
     const parsed = parseQuestions(toTsv(s.questions));
-    expect(parsed).toEqual({ questions: Q.map((q) => ({ ...q, seconds: 60 })) });
+    expect(parsed).toEqual({ questions: Q.map((q) => ({ ...q, seconds: 60, worth: 100 })) });
   });
 
   it("is refused mid-round but keeps scores otherwise", () => {
@@ -245,12 +314,12 @@ describe("editing questions", () => {
     expect(applyAdmin(s, { t: "addQuestion", question: NEW }, 0)).toBeUndefined();
     expect(s.questions).toHaveLength(3);
     const added = s.questions[2];
-    expect(added).toMatchObject({ prompt: "新しい問題", target: 30.3 });
+    expect(added).toMatchObject({ prompt: "新しい問題", target: 30.25, worth: 100 });
     expect(added.id).not.toBe(s.questions[1].id);
 
     const edit = { prompt: "直した問題", left: "A", right: "B", target: 10 };
     expect(applyAdmin(s, { t: "updateQuestion", id: added.id, question: edit }, 0)).toBeUndefined();
-    expect(s.questions[2]).toEqual({ id: added.id, ...edit, seconds: 60 }); // comment cleared, id kept, default time
+    expect(s.questions[2]).toEqual({ id: added.id, ...edit, seconds: 60, worth: 100 }); // comment cleared, id kept, defaults
 
     expect(applyAdmin(s, { t: "deleteQuestion", id: s.questions[0].id }, 0)).toBeUndefined();
     expect(s.questions.map((q) => q.prompt)).toEqual(["朝型？夜型？", "直した問題"]);
@@ -262,6 +331,8 @@ describe("editing questions", () => {
     expect(applyAdmin(s, { t: "addQuestion", question: { ...NEW, target: 101 } }, 0)).toMatch(/正解/);
     expect(applyAdmin(s, { t: "addQuestion", question: { ...NEW, target: NaN } }, 0)).toMatch(/正解/);
     expect(applyAdmin(s, { t: "addQuestion", question: { ...NEW, seconds: 2 } }, 0)).toMatch(/回答時間/);
+    expect(applyAdmin(s, { t: "addQuestion", question: { ...NEW, worth: 0 } }, 0)).toMatch(/配点/);
+    expect(applyAdmin(s, { t: "addQuestion", question: { ...NEW, step: 0.01 } }, 0)).toMatch(/針の刻み/);
     expect(applyAdmin(s, { t: "updateQuestion", id: "nope", question: NEW }, 0)).toBeTruthy();
     expect(applyAdmin(s, { t: "deleteQuestion", id: "nope" }, 0)).toBeTruthy();
     expect(s.questions).toHaveLength(2);

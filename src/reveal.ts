@@ -100,7 +100,7 @@ export function useScreenSounds(view: View | null, stage: Stage, live: boolean, 
     const misses = Object.keys(result.ranks).map((n) => result.points[Number(n)] ?? Infinity);
     play(misses.length && Math.min(...misses) <= CLOSE ? "correct" : "incorrect");
     if (!hp) return;
-    const max = Math.max(1, view.qCount) * 100;
+    const max = Math.max(1, view.maxScore);
     const low = view.tables.some((t) => {
       const was = max - (t.score - (result.points[t.n] ?? 0));
       const now = max - t.score;

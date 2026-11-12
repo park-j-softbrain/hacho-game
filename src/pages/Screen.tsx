@@ -121,6 +121,7 @@ function Round({ view, stage }: { view: View; stage: Stage }) {
         <h2 class={`screen-prompt display print${long}`}>{q.prompt}</h2>
         <div class="dial-box">
           <Dial
+            scale={q.scale}
             target={stage === "pause" ? undefined : result?.target}
             sweep={stage === "sweep"}
             markers={markers}
@@ -141,7 +142,7 @@ function Round({ view, stage }: { view: View; stage: Stage }) {
         {view.phase !== "open" && !intro && view.average != null && (
           <div class="average-pill">
             <span>みんなの平均</span>
-            <b class="display">{fmt(view.average)}</b>
+            <b class="display">{fmt(view.average, view.question!.scale.unit)}</b>
           </div>
         )}
       </aside>
@@ -169,7 +170,7 @@ function Answering({ view }: { view: View }) {
 function Result({ view }: { view: View }) {
   const result = view.result!;
   const names = new Map(view.tables.map((t) => [t.n, t.name]));
-  // The closest three places (ties share one), with each table's miss.
+  // The closest three places (ties share one), with each table's points.
   const places = [1, 2, 3]
     .map((rank) => ({
       rank,
@@ -185,7 +186,7 @@ function Result({ view }: { view: View }) {
     <>
       <div class="card card-dots side-card target-card">
         <span class="chip chip-pink">正解</span>
-        <p class="screen-target display">{fmt(result.target)}</p>
+        <p class="screen-target display">{fmt(result.target, view.question!.scale.unit)}</p>
         {result.comment && <p class="screen-comment">{result.comment}</p>}
       </div>
       <div class="card winners">
@@ -209,7 +210,7 @@ function Result({ view }: { view: View }) {
         {places.length === 0 && (
           <p class="screen-sub">回答したチームはありませんでした</p>
         )}
-        <p class="small">（）は正解とのズレ。少ないほど上位</p>
+        <p class="small">（）は今回の点数。ズレが少ないほど小さく、少ないほど上位</p>
       </div>
     </>
   );

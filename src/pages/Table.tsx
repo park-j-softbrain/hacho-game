@@ -1,6 +1,6 @@
 import type { ComponentChildren } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
-import type { View } from "../../shared/game";
+import { type View, fractionOf, snap } from "../../shared/game";
 import { Dial, Ends, fmt } from "../Dial";
 import { serverNow, useGame, useTick } from "../net";
 import { click, play, useSound } from "../sound";
@@ -82,12 +82,12 @@ function Body({
         <div class="phone-round">
           <QuestionHead view={view} />
           <DialCard>
-            <Dial value={me.answer?.v ?? null} />
+            <Dial scale={view.question!.scale} value={me.answer?.v ?? null} />
             <Ends left={view.question!.left} right={view.question!.right} />
           </DialCard>
           <p class="big display">締め切りました</p>
           <p>
-            {me.answer ? `あなたの回答: ${me.answer.v}` : "回答なし"}
+            {me.answer ? `あなたの回答: ${fmt(me.answer.v, view.question!.scale.unit)}` : "回答なし"}
             ・正解発表をお待ちください
           </p>
         </div>
@@ -95,9 +95,10 @@ function Body({
     case "reveal": {
       const result = view.result!;
       const points = result.points[me.n];
+      const sc = view.question!.scale;
       return (
         <div class="phone-round">
-          <Burst label="正解とのズレ">
+          <Burst label="今回の点数（ズレ）">
             {me.answer ? (
               <span class="points">
                 {fmt(points ?? 0)}
@@ -114,16 +115,17 @@ function Body({
           )}
           <DialCard>
             <Dial
+              scale={sc}
               value={me.answer?.v ?? null}
               target={result.target}
-              label={`ダイヤル。正解${fmt(result.target)}${me.answer ? `、あなたの針は${me.answer.v}` : ""}`}
+              label={`ダイヤル。正解${fmt(result.target, sc.unit)}${me.answer ? `、あなたの針は${fmt(me.answer.v, sc.unit)}` : ""}`}
             />
             <Ends left={view.question!.left} right={view.question!.right} />
           </DialCard>
           <p class="answer-line">
-            正解は <b class="display print">{fmt(result.target)}</b>
+            正解は <b class="display print">{fmt(result.target, sc.unit)}</b>
             {me.answer && (
-              <span class="answer-mine">（あなたの回答: {me.answer.v}）</span>
+              <span class="answer-mine">（あなたの回答: {fmt(me.answer.v, sc.unit)}）</span>
             )}
           </p>
           {result.comment && <p class="small">{result.comment}</p>}
@@ -161,25 +163,29 @@ function Body({
 function Answering({ view, send }: { view: View; send: Send }) {
   const me = view.me!;
   const answer = me.answer;
-  const [pos, setPosState] = useState(answer?.v ?? 50);
+  const sc = view.question!.scale;
+  const middle = snap(sc, (sc.min + sc.max) / 2);
+  const [pos, setPosState] = useState(answer?.v ?? middle);
   // Read by the ◀ ▶ buttons, so quick taps between renders each still count.
   const posRef = useRef(pos);
   const setPos = (v: number) => {
     posRef.current = v;
     setPosState(v);
   };
-  // The player moving the needle: a click per step, stronger on or past a 10.
+  // The player moving the needle: a click per step, stronger on or past each tenth of the range.
+  const tenth = (v: number) => Math.floor(fractionOf(sc, v) * 10 + 1e-9);
   const move = (v: number) => {
     const from = posRef.current;
     if (v === from) return;
-    click(v % 10 === 0 || Math.floor(v / 10) !== Math.floor(from / 10));
+    const onTenth = Math.abs(fractionOf(sc, v) * 10 - Math.round(fractionOf(sc, v) * 10)) < 1e-6;
+    click(onTenth || tenth(v) !== tenth(from));
     setPos(v);
   };
   const moveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   useTick(250);
 
   // New question: start from the middle (or wherever this table already answered).
-  useEffect(() => setPos(answer?.v ?? 50), [view.qid]);
+  useEffect(() => setPos(answer?.v ?? middle), [view.qid]);
   // Another phone at the same table submitted: follow it.
   useEffect(() => {
     if (answer?.submitted) setPos(answer.v);
@@ -192,8 +198,10 @@ function Answering({ view, send }: { view: View; send: Send }) {
     clearTimeout(moveTimer.current);
     moveTimer.current = setTimeout(() => send({ t: "move", v }), 250);
   };
+  const shown = fmt(pos, sc.unit);
+  // ◀ ▶ move one step toward that end of the dial.
   const nudge = (d: number) => {
-    const v = Math.min(100, Math.max(0, posRef.current + d));
+    const v = snap(sc, posRef.current + d * sc.step * Math.sign(sc.max - sc.min));
     move(v);
     commit(v);
   };
@@ -204,6 +212,7 @@ function Answering({ view, send }: { view: View; send: Send }) {
       <Countdown startedAt={view.startedAt} deadline={view.deadline} />
       <DialCard>
         <Dial
+          scale={sc}
           value={pos}
           onChange={move}
           onCommit={commit}
@@ -215,7 +224,7 @@ function Answering({ view, send }: { view: View; send: Send }) {
         <button onClick={() => nudge(-1)} disabled={locked} aria-label="左へ">
           <Chevron d="M15 5 L8 12 L15 19" />
         </button>
-        <span class="nudge-value">{pos}</span>
+        <span class={`nudge-value${shown.length > 7 ? " longer" : shown.length > 4 ? " long" : ""}`}>{shown}</span>
         <button onClick={() => nudge(1)} disabled={locked} aria-label="右へ">
           <Chevron d="M9 5 L16 12 L9 19" />
         </button>

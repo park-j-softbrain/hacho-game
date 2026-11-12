@@ -7,6 +7,7 @@ import {
   DEFAULT_SECONDS,
   GRACE_MS,
   initialState,
+  migrate,
   type AdminMsg,
   type GameState,
   type TableMsg,
@@ -58,6 +59,9 @@ export class Game extends DurableObject<Env> {
       this.s = { ...initialState(SAMPLE_QUESTIONS), ...stored };
       // Questions saved before each had its own answer time take the old game-wide one.
       for (const q of this.s.questions) q.seconds ??= this.s.seconds ?? DEFAULT_SECONDS;
+      // State saved before targets moved onto each question's own units.
+      if (stored) this.s.version = stored.version ?? 1;
+      migrate(this.s);
       let secret = await ctx.storage.get<string>("tableSecret");
       if (!secret) {
         secret = randomSecret();

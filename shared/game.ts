@@ -5,15 +5,89 @@
 export type Question = {
   id: string;
   prompt: string; // お題
-  left: string; // 左端のラベル (0)
-  right: string; // 右端のラベル (100)
-  target: number; // 正解 0–100
+  left: string; // 左端のラベル。数字で始まれば範囲の下限 ("0m")
+  right: string; // 右端のラベル。数字で始まれば範囲の上限 ("5,000m")
+  target: number; // 正解、問題の単位で (0〜5000m の問題なら 3776)
   comment?: string; // 正解発表で表示する解説
   seconds: number; // 回答時間
+  worth: number; // 配点: 範囲の端から端までずれたときの点数
+  step?: number; // 針の刻み、問題の単位で。なければ範囲の約1%
 };
 
-// seconds may be left out: it then falls back to DEFAULT_SECONDS.
-export type QuestionInput = Omit<Question, "id" | "seconds"> & { seconds?: number };
+// seconds and worth may be left out: they fall back to DEFAULT_SECONDS and DEFAULT_WORTH.
+export type QuestionInput = Omit<Question, "id" | "seconds" | "worth"> & { seconds?: number; worth?: number };
+
+export const DEFAULT_WORTH = 100;
+export const MAX_WORTH = 100000;
+export const MAX_STEPS = 1000; // the finest step: 1/1000 of the range
+
+// ---- the dial's range ----
+// When both end labels start with a number ("0m" and "5,000m"), the dial runs
+// between them in that unit. Otherwise it is the plain 0–100 scale.
+
+export type Scale = { min: number; max: number; unit: string; step: number };
+
+export function halfWidth(raw: string): string {
+  return raw
+    .replace(/[０-９．，＋]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+    .replace(/[−－]/g, "-");
+}
+
+// "5,000m" -> { n: 5000, unit: "m" }; "−30℃" -> { n: -30, unit: "℃" }; "ナシ" -> null
+export function parseLabel(label: string): { n: number; unit: string } | null {
+  const m = /^([-+]?\d[\d,]*(?:\.\d+)?)\s*(.*)$/.exec(halfWidth(label).trim());
+  if (!m) return null;
+  const n = Number(m[1].replace(/,/g, ""));
+  return Number.isFinite(n) ? { n, unit: m[2].trim() } : null;
+}
+
+export function rangeOf(left: string, right: string): { min: number; max: number; unit: string } {
+  const a = parseLabel(left);
+  const b = parseLabel(right);
+  if (!a || !b || a.n === b.n) return { min: 0, max: 100, unit: "" };
+  return { min: a.n, max: b.n, unit: b.unit || a.unit };
+}
+
+// About 1% of the range, rounded down to 1, 2 or 5 × a power of ten (5000 -> 50, 125 -> 1).
+export function defaultStep(width: number): number {
+  const x = Math.abs(width) / 100;
+  const p = 10 ** Math.floor(Math.log10(x));
+  const f = x / p;
+  return round6((f >= 5 ? 5 : f >= 2 ? 2 : 1) * p);
+}
+
+function stepOk(step: unknown, width: number): step is number {
+  return typeof step === "number" && Number.isFinite(step) && step > 0 && step <= Math.abs(width) && Math.abs(width) / step <= MAX_STEPS;
+}
+
+export function scaleOf(q: { left: string; right: string; step?: number }): Scale {
+  const r = rangeOf(q.left, q.right);
+  const width = r.max - r.min;
+  return { ...r, step: stepOk(q.step, width) ? q.step : defaultStep(width) };
+}
+
+// The nearest needle position: on the step grid counted from the left end, inside the range.
+export function snap(sc: Scale, v: number): number {
+  const lo = Math.min(sc.min, sc.max);
+  const hi = Math.max(sc.min, sc.max);
+  const dir = sc.max >= sc.min ? 1 : -1;
+  const x = sc.min + dir * Math.round(((v - sc.min) * dir) / sc.step) * sc.step;
+  return round6(Math.min(hi, Math.max(lo, x)));
+}
+
+// Where v sits along the dial: 0 at the left end, 1 at the right end.
+export function fractionOf(sc: Scale, v: number): number {
+  return Math.min(1, Math.max(0, (v - sc.min) / (sc.max - sc.min)));
+}
+
+function round6(x: number): number {
+  return Math.round(x * 1e6) / 1e6;
+}
+
+// "3,776m", "-12.5℃": the number the way the projector and phones show it.
+export function formatValue(v: number, unit = ""): string {
+  return v.toLocaleString("ja-JP", { maximumFractionDigits: 2 }) + unit;
+}
 
 export const DEFAULT_SECONDS = 60;
 export const MIN_SECONDS = 5;
@@ -44,22 +118,30 @@ export type GameState = {
   deadline: number;
   answers: Record<number, Answer>; // current round, by table
   shown: number; // finale: how many podium places are out (0 = the "全問終了" screen)
+  version?: number; // 2: targets and answers are in each question's own units (before: 0–100)
 };
+
+export const STATE_VERSION = 2;
 
 // Accept answers that were in flight when the clock ran out.
 export const GRACE_MS = 1000;
 export const MAX_TABLES = 100;
 export const MAX_QUESTIONS = 200;
 
-// Scoring is the miss: how far the answer is from the target on the 0–100 scale.
-// The lowest total wins. A table that gave no answer scores the worst miss
-// possible for that question, so skipping can never beat guessing.
-export function pointsFor(guess: number, target: number): number {
-  return round1(Math.abs(guess - target));
+// Scoring is the miss as a share of the range, times the question's worth:
+// |正解 − 回答| × 配点 ÷ 範囲の幅. A perfect answer scores 0 and missing by the
+// whole range scores the worth. The lowest total wins. A table that gave no
+// answer scores the miss to the farther end, so skipping can never beat guessing.
+type Scored = { left: string; right: string; target: number; worth: number };
+
+export function pointsFor(q: Scored, guess: number): number {
+  const r = rangeOf(q.left, q.right);
+  return round1((Math.abs(guess - q.target) * q.worth) / Math.abs(r.max - r.min));
 }
 
-export function missPenalty(target: number): number {
-  return round1(Math.max(target, 100 - target));
+export function missPenalty(q: Scored): number {
+  const r = rangeOf(q.left, q.right);
+  return Math.max(pointsFor(q, r.min), pointsFor(q, r.max));
 }
 
 function round1(x: number): number {
@@ -67,9 +149,9 @@ function round1(x: number): number {
 }
 
 // Every table's miss for one question, from the answers that were in when it closed.
-function scoreRound(s: GameState, target: number, answers: Record<number, number>): Record<number, number> {
+function scoreRound(s: GameState, q: Question, answers: Record<number, number>): Record<number, number> {
   const points: Record<number, number> = {};
-  for (const n of tableNumbers(s)) points[n] = n in answers ? pointsFor(answers[n], target) : missPenalty(target);
+  for (const n of tableNumbers(s)) points[n] = n in answers ? pointsFor(q, answers[n]) : missPenalty(q);
   return points;
 }
 
@@ -99,6 +181,7 @@ export function initialState(questions: QuestionInput[]): GameState {
     deadline: 0,
     answers: {},
     shown: 0,
+    version: STATE_VERSION,
   };
   setQuestions(s, questions);
   return s;
@@ -190,9 +273,10 @@ export function applyTable(s: GameState, n: number, m: TableMsg, now: number): s
       return;
     case "move":
     case "submit": {
-      const v = toValue(m.v);
-      if (v === null) return "回答が読み取れませんでした";
-      if (s.phase !== "open" || now > s.deadline + GRACE_MS) return CLOSED;
+      const q = currentQuestion(s);
+      if (s.phase !== "open" || !q || now > s.deadline + GRACE_MS) return CLOSED;
+      if (typeof m.v !== "number" || !Number.isFinite(m.v)) return "回答が読み取れませんでした";
+      const v = snap(scaleOf(q), m.v);
       if (m.t === "move" && s.answers[n]?.submitted) return; // locked until "修正する"
       s.answers[n] = { v, submitted: m.t === "submit" };
       return;
@@ -229,7 +313,7 @@ export function applyAdmin(s: GameState, m: AdminMsg, now: number): string | und
       if (s.phase !== "closed" || !q) return "締め切ったあとに発表できます";
       const answers: Record<number, number> = {};
       for (const [key, a] of Object.entries(s.answers)) answers[Number(key)] = a.v;
-      s.results[q.id] = { answers, points: scoreRound(s, q.target, answers) }; // re-running a question replaces its earlier result
+      s.results[q.id] = { answers, points: scoreRound(s, q, answers) }; // re-running a question replaces its earlier result
       s.played = [...playedOrder(s).filter((id) => id !== q.id), q.id];
       s.phase = "reveal";
       return;
@@ -286,11 +370,13 @@ export function applyAdmin(s: GameState, m: AdminMsg, now: number): string | und
       if (isLive(s, old.id)) return "出題中の問題は変更できません";
       const q = checkQuestion(m.question);
       if (typeof q === "string") return q;
-      Object.assign(old, makeQuestion(s, q, old.id));
-      if (!q.comment) delete old.comment;
+      const fresh = makeQuestion(s, q, old.id);
+      Object.assign(old, fresh);
+      if (!fresh.comment) delete old.comment;
+      if (fresh.step === undefined) delete old.step;
       // A question that was already revealed is scored again against its new answer.
       const r = s.results[old.id];
-      if (r) r.points = scoreRound(s, old.target, r.answers);
+      if (r) r.points = scoreRound(s, old, r.answers);
       return;
     }
     case "deleteQuestion": {
@@ -344,28 +430,72 @@ function setQuestions(s: GameState, questions: QuestionInput[]) {
 }
 
 function makeQuestion(s: GameState, q: QuestionInput, id = `q${s.nextId++}`): Question {
+  const left = clean(q.left, 24);
+  const right = clean(q.right, 24);
+  const r = rangeOf(left, right);
+  const lo = Math.min(r.min, r.max);
+  const hi = Math.max(r.min, r.max);
+  const target = typeof q.target === "number" && Number.isFinite(q.target) ? q.target : (lo + hi) / 2;
   return {
     id,
     prompt: clean(q.prompt, 80),
-    left: clean(q.left, 24),
-    right: clean(q.right, 24),
-    target: toValue(q.target, 1) ?? 50,
+    left,
+    right,
+    target: round6(Math.min(hi, Math.max(lo, target))),
     ...(q.comment ? { comment: clean(q.comment, 160) } : {}),
     seconds: clampInt(q.seconds ?? DEFAULT_SECONDS, MIN_SECONDS, MAX_SECONDS),
+    worth: worthOk(q.worth) ? q.worth : DEFAULT_WORTH,
+    ...(stepOk(q.step, r.max - r.min) ? { step: round6(q.step) } : {}),
   };
+}
+
+function worthOk(w: unknown): w is number {
+  return typeof w === "number" && Number.isInteger(w) && w >= 1 && w <= MAX_WORTH;
+}
+
+// What is wrong with a question's answer, worth, step or time, or null. Shared
+// by the admin form and the spreadsheet import, which add where the problem is.
+export function questionProblem(q: QuestionInput): string | null {
+  const r = rangeOf(q.left ?? "", q.right ?? "");
+  const lo = Math.min(r.min, r.max);
+  const hi = Math.max(r.min, r.max);
+  const width = hi - lo;
+  if (typeof q.target !== "number" || !Number.isFinite(q.target) || q.target < lo || q.target > hi) {
+    return `正解は${formatValue(lo, r.unit)}〜${formatValue(hi, r.unit)}の数字にしてください`;
+  }
+  if (q.worth !== undefined && !worthOk(q.worth)) return "配点は1以上の整数にしてください";
+  if (q.step !== undefined && !stepOk(q.step, width)) {
+    return `針の刻みは${formatValue(round6(width / MAX_STEPS), r.unit)}〜${formatValue(width, r.unit)}の数字にしてください（空欄なら${formatValue(defaultStep(width), r.unit)}）`;
+  }
+  if (q.seconds !== undefined && !(Number.isInteger(q.seconds) && q.seconds >= MIN_SECONDS && q.seconds <= MAX_SECONDS)) {
+    return `回答時間は${MIN_SECONDS}〜${MAX_SECONDS}秒の整数にしてください`;
+  }
+  return null;
 }
 
 // A question typed on the admin page: say what is wrong instead of guessing.
 function checkQuestion(q: QuestionInput): QuestionInput | string {
   if (!q || typeof q !== "object") return "問題が読み取れませんでした";
   if (!clean(q.prompt, 80)) return "お題を入力してください";
-  if (typeof q.target !== "number" || !Number.isFinite(q.target) || q.target < 0 || q.target > 100) {
-    return "正解は0〜100の数字で入力してください";
+  return questionProblem(q) ?? q;
+}
+
+// State saved before version 2 kept every target and answer on 0–100. A question
+// whose labels now give it its own range has those moved onto that range.
+export function migrate(s: GameState) {
+  for (const q of s.questions) q.worth ??= DEFAULT_WORTH;
+  if ((s.version ?? 1) < 2) {
+    for (const q of s.questions) {
+      const r = rangeOf(q.left, q.right);
+      if (r.min === 0 && r.max === 100) continue;
+      const conv = (v: number) => round6(r.min + (v / 100) * (r.max - r.min));
+      q.target = conv(q.target);
+      const res = s.results[q.id];
+      if (res) for (const k of Object.keys(res.answers)) res.answers[Number(k)] = conv(res.answers[Number(k)]);
+      if (s.qid === q.id) for (const a of Object.values(s.answers)) a.v = conv(a.v);
+    }
   }
-  if (q.seconds !== undefined && !(Number.isInteger(q.seconds) && q.seconds >= MIN_SECONDS && q.seconds <= MAX_SECONDS)) {
-    return `回答時間は${MIN_SECONDS}〜${MAX_SECONDS}秒で入力してください`;
-  }
-  return q;
+  s.version = STATE_VERSION;
 }
 
 // The question being played right now can't change under the tables' hands.
@@ -381,13 +511,6 @@ function setName(s: GameState, n: number, name: unknown) {
 
 function clean(v: unknown, max: number): string {
   return typeof v === "string" ? v.trim().slice(0, max) : "";
-}
-
-function toValue(v: unknown, digits = 0): number | null {
-  const x = typeof v === "number" ? v : Number.NaN;
-  if (!Number.isFinite(x)) return null;
-  const f = 10 ** digits;
-  return Math.round(Math.min(100, Math.max(0, x)) * f) / f;
 }
 
 function clampInt(v: unknown, min: number, max: number): number {
@@ -416,14 +539,15 @@ export type View = {
   qid: string | null;
   qNo: number;
   qCount: number;
-  question: { prompt: string; left: string; right: string } | null;
+  question: { prompt: string; left: string; right: string; scale: Scale } | null;
+  maxScore: number; // every question's worth added up: the most a table can lose
   startedAt: number;
   deadline: number;
   tables: TableRow[]; // by table number
   // all tables' needles: admin always, projector once the round is closed
   answers?: { n: number; v: number; submitted: boolean }[];
   average?: number | null;
-  // points = each table's miss for this question (lower is better); ranks only cover tables that answered
+  // points = each table's score for this question (lower is better); ranks only cover tables that answered
   result?: { target: number; comment?: string; points: Record<number, number>; ranks: Record<number, number> };
   me?: { n: number; name: string; hasName: boolean; answer: Answer | null; score: number; rank: number };
   // the score graph, sent while the ranking is shown
@@ -485,7 +609,8 @@ export function buildView(s: GameState, viewer: Viewer, online: Set<number>, now
     qid: q?.id ?? null,
     qNo: q ? s.questions.indexOf(q) + 1 : 0,
     qCount: s.questions.length,
-    question: q && s.phase !== "lobby" ? { prompt: q.prompt, left: q.left, right: q.right } : null,
+    question: q && s.phase !== "lobby" ? { prompt: q.prompt, left: q.left, right: q.right, scale: scaleOf(q) } : null,
+    maxScore: s.questions.reduce((a, x) => a + (x.worth ?? DEFAULT_WORTH), 0),
     startedAt: s.startedAt,
     deadline: s.deadline,
     tables: tableNumbers(s).map((n) => ({
