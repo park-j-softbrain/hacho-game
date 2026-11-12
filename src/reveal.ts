@@ -4,18 +4,19 @@ import { serverNow } from "./net";
 import { play } from "./sound";
 
 // The projector's reveal, played as a little show when it happens live:
-// a drumroll, then the answer line swings in, then the results. A page opened
+// a second of silence, then the answer line swings in, then the results (the
+// drumroll is kept for the final results). A page opened
 // in the middle of a reveal just shows the results.
-export const DRUM_MS = 1600;
+export const PAUSE_MS = 1000;
 export const SWEEP_MS = 2000; // matches .target-sweep in style.css
-const SHOW_MS = DRUM_MS + SWEEP_MS;
+const SHOW_MS = PAUSE_MS + SWEEP_MS;
 // After the results show, the tables band drops its bars at +1.8 s and settles
 // the ranks at +3.6 s (style.css); the HP sounds follow those.
 const BARS_MS = 1800;
 const SETTLED_MS = 3400;
 const CLOSE = 5; // a miss this small counts as a hit for the "correct" sound
 
-export type Stage = "drum" | "sweep" | "done";
+export type Stage = "pause" | "sweep" | "done";
 
 export function useReveal(view: View | null) {
   const [, bump] = useState(0);
@@ -37,19 +38,18 @@ export function useReveal(view: View | null) {
   const at = start.current;
   useEffect(() => {
     if (at == null) return;
-    play("drumroll");
     const timers = [
       setTimeout(() => {
         play("needle_sweep");
         bump((x) => x + 1);
-      }, DRUM_MS),
+      }, PAUSE_MS),
       setTimeout(() => bump((x) => x + 1), SHOW_MS),
     ];
     return () => timers.forEach(clearTimeout);
   }, [at]);
 
   const elapsed = at == null ? Infinity : Date.now() - at;
-  const stage: Stage = elapsed < DRUM_MS ? "drum" : elapsed < SHOW_MS ? "sweep" : "done";
+  const stage: Stage = elapsed < PAUSE_MS ? "pause" : elapsed < SHOW_MS ? "sweep" : "done";
   return { stage, before: before.current, live: at != null };
 }
 

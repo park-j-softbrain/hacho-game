@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import type { View } from "../../shared/game";
 import { Dial, Ends, fmt } from "../Dial";
 import { serverNow, useGame, useTick } from "../net";
-import { play, useSound } from "../sound";
+import { click, play, useSound } from "../sound";
 import { Banner, Burst, Center, Countdown } from "../ui";
 
 export function TablePage({ n, k }: { n: number; k: string }) {
@@ -168,6 +168,13 @@ function Answering({ view, send }: { view: View; send: Send }) {
     posRef.current = v;
     setPosState(v);
   };
+  // The player moving the needle: a click per step, stronger on or past a 10.
+  const move = (v: number) => {
+    const from = posRef.current;
+    if (v === from) return;
+    click(v % 10 === 0 || Math.floor(v / 10) !== Math.floor(from / 10));
+    setPos(v);
+  };
   const moveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   useTick(250);
 
@@ -187,7 +194,7 @@ function Answering({ view, send }: { view: View; send: Send }) {
   };
   const nudge = (d: number) => {
     const v = Math.min(100, Math.max(0, posRef.current + d));
-    setPos(v);
+    move(v);
     commit(v);
   };
 
@@ -198,7 +205,7 @@ function Answering({ view, send }: { view: View; send: Send }) {
       <DialCard>
         <Dial
           value={pos}
-          onChange={setPos}
+          onChange={move}
           onCommit={commit}
           disabled={locked}
         />
@@ -248,7 +255,7 @@ const PHONE_SOUNDS = ["submit"] as const;
 
 // The phone's side of the finale: wait while the projector reveals 3位 → 1位,
 // then show this table's final place. When 1位 comes out live, hold the phone's
-// answer back until the projector's drumroll is over.
+// answer back until the projector's drumroll and fanfare are over.
 const HOLD_MS = 5000;
 
 function PhoneFinale({ view }: { view: View }) {

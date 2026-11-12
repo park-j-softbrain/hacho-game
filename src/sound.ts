@@ -76,6 +76,30 @@ export function play(name: Sfx, rate = 1) {
   });
 }
 
+// The phone's needle click: a short beep, made here instead of loaded, and a
+// little lower and louder on every 10. Fast drags are thinned out so the
+// clicks don't run together into a buzz.
+let lastClick = 0;
+export function click(strong = false) {
+  if (muted || !ctx || ctx.state !== "running") return;
+  const c = ctx;
+  const t = c.currentTime;
+  if (t - lastClick < 0.018) return;
+  lastClick = t;
+  const osc = c.createOscillator();
+  osc.type = "square";
+  osc.frequency.value = strong ? 1920 : 2400;
+  const filter = c.createBiquadFilter();
+  filter.type = "lowpass";
+  filter.frequency.value = 5000;
+  const gain = c.createGain();
+  gain.gain.setValueAtTime(strong ? 0.19 : 0.12, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.018);
+  osc.connect(filter).connect(gain).connect(c.destination);
+  osc.start(t);
+  osc.stop(t + 0.02);
+}
+
 export function setMuted(m: boolean) {
   muted = m;
   try {

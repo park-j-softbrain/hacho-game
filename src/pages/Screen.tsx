@@ -93,7 +93,7 @@ function Lobby({ view }: { view: View }) {
 }
 
 const SCREEN_SOUNDS = [
-  "question_start", "tick", "time_up", "join", "drumroll", "needle_sweep",
+  "question_start", "tick", "time_up", "join", "needle_sweep",
   "correct", "incorrect", "hp_down", "hp_low", ...FINALE_SOUNDS,
 ] as const;
 
@@ -121,7 +121,7 @@ function Round({ view, stage }: { view: View; stage: Stage }) {
         <h2 class={`screen-prompt display print${long}`}>{q.prompt}</h2>
         <div class="dial-box">
           <Dial
-            target={stage === "drum" ? undefined : result?.target}
+            target={stage === "pause" ? undefined : result?.target}
             sweep={stage === "sweep"}
             markers={markers}
             label={`ダイヤル。${q.left}から${q.right}`}
