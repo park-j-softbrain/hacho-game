@@ -9,9 +9,15 @@ export type Question = {
   right: string; // 右端のラベル (100)
   target: number; // 正解 0–100
   comment?: string; // 正解発表で表示する解説
+  seconds: number; // 回答時間
 };
 
-export type QuestionInput = Omit<Question, "id">;
+// seconds may be left out: it then falls back to DEFAULT_SECONDS.
+export type QuestionInput = Omit<Question, "id" | "seconds"> & { seconds?: number };
+
+export const DEFAULT_SECONDS = 60;
+export const MIN_SECONDS = 5;
+export const MAX_SECONDS = 600;
 
 export type Phase = "lobby" | "open" | "closed" | "reveal" | "scores";
 
@@ -25,7 +31,7 @@ export type RoundResult = {
 export type GameState = {
   title: string;
   tableCount: number;
-  seconds: number; // default answer time
+  seconds: number; // unused since answer times moved onto each question; kept so saved state still loads
   questions: Question[];
   nextId: number;
   names: Record<number, string>;
@@ -79,7 +85,7 @@ export function initialState(questions: QuestionInput[]): GameState {
   const s: GameState = {
     title: "波長あわせゲーム",
     tableCount: 20,
-    seconds: 60,
+    seconds: DEFAULT_SECONDS,
     questions: [],
     nextId: 1,
     names: {},
@@ -144,13 +150,13 @@ export type TableMsg =
   | { t: "unsubmit" };
 
 export type AdminMsg =
-  | { t: "start"; qid: string; seconds?: number }
+  | { t: "start"; qid: string }
   | { t: "close" }
   | { t: "reveal" }
   | { t: "scores" }
   | { t: "lobby" }
   | { t: "addTime"; seconds: number }
-  | { t: "settings"; title?: string; tableCount?: number; seconds?: number }
+  | { t: "settings"; title?: string; tableCount?: number }
   | { t: "rename"; n: number; name: string }
   | { t: "adjust"; n: number; delta: number }
   | { t: "questions"; questions: QuestionInput[] }
@@ -194,7 +200,7 @@ export function applyAdmin(s: GameState, m: AdminMsg, now: number): string | und
       s.phase = "open";
       s.qid = q.id;
       s.startedAt = now;
-      s.deadline = now + clampInt(m.seconds ?? s.seconds, 5, 600) * 1000;
+      s.deadline = now + clampInt(q.seconds, MIN_SECONDS, MAX_SECONDS) * 1000;
       s.answers = {};
       return;
     }
@@ -226,7 +232,6 @@ export function applyAdmin(s: GameState, m: AdminMsg, now: number): string | und
     case "settings":
       if (m.title !== undefined) s.title = clean(m.title, 40) || s.title;
       if (m.tableCount !== undefined) s.tableCount = clampInt(m.tableCount, 1, MAX_TABLES);
-      if (m.seconds !== undefined) s.seconds = clampInt(m.seconds, 5, 600);
       return;
     case "rename":
       setName(s, m.n, m.name);
@@ -319,6 +324,7 @@ function makeQuestion(s: GameState, q: QuestionInput, id = `q${s.nextId++}`): Qu
     right: clean(q.right, 24),
     target: toValue(q.target, 1) ?? 50,
     ...(q.comment ? { comment: clean(q.comment, 160) } : {}),
+    seconds: clampInt(q.seconds ?? DEFAULT_SECONDS, MIN_SECONDS, MAX_SECONDS),
   };
 }
 
@@ -328,6 +334,9 @@ function checkQuestion(q: QuestionInput): QuestionInput | string {
   if (!clean(q.prompt, 80)) return "お題を入力してください";
   if (typeof q.target !== "number" || !Number.isFinite(q.target) || q.target < 0 || q.target > 100) {
     return "正解は0〜100の数字で入力してください";
+  }
+  if (q.seconds !== undefined && !(Number.isInteger(q.seconds) && q.seconds >= MIN_SECONDS && q.seconds <= MAX_SECONDS)) {
+    return `回答時間は${MIN_SECONDS}〜${MAX_SECONDS}秒で入力してください`;
   }
   return q;
 }
@@ -395,7 +404,6 @@ export type View = {
   admin?: {
     questions: (Question & { done: boolean })[];
     tableCount: number;
-    seconds: number;
     tokens: Record<number, string>;
   };
 };
@@ -482,7 +490,6 @@ export function buildView(s: GameState, viewer: Viewer, online: Set<number>, now
     view.admin = {
       questions: s.questions.map((x) => ({ ...x, done: !!s.results[x.id] })),
       tableCount: s.tableCount,
-      seconds: s.seconds,
       tokens: viewer.tokens,
     };
   }

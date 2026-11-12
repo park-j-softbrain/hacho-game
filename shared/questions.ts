@@ -1,4 +1,4 @@
-import type { Question, QuestionInput } from "./game";
+import { MAX_SECONDS, MIN_SECONDS, type Question, type QuestionInput } from "./game";
 
 // Loaded on first start. Replace them from the admin page (問題の読み込み).
 export const SAMPLE_QUESTIONS: QuestionInput[] = [
@@ -39,10 +39,11 @@ export const SAMPLE_QUESTIONS: QuestionInput[] = [
   },
 ];
 
-export const TSV_HEADER = ["お題", "左", "右", "正解(0-100)", "解説"];
+export const TSV_HEADER = ["お題", "左", "右", "正解(0-100)", "解説", "所要時間(秒)"];
 
 // Rows pasted from a spreadsheet (tab-separated) or CSV without quotes:
-// お題, 左, 右, 正解(0–100), 解説(任意). A header row is skipped. A JSON array also works.
+// お題, 左, 右, 正解(0–100), 解説(任意), 所要時間(秒, 任意: 空なら60秒).
+// A header row is skipped. A JSON array also works.
 export function parseQuestions(text: string): { questions: QuestionInput[] } | { error: string } {
   const body = text.trim();
   if (!body) return { error: "問題が空です" };
@@ -53,14 +54,18 @@ export function parseQuestions(text: string): { questions: QuestionInput[] } | {
   let firstRow = true;
   for (const [i, line] of body.split(/\r?\n/).entries()) {
     if (!line.trim()) continue;
-    const [prompt = "", left = "", right = "", rawTarget = "", comment = ""] = line.split(sep).map((c) => c.trim());
+    const [prompt = "", left = "", right = "", rawTarget = "", comment = "", rawSeconds = ""] = line
+      .split(sep)
+      .map((c) => c.trim());
     const target = toTarget(rawTarget);
     const isHeader = firstRow && target === null;
     firstRow = false;
     if (isHeader) continue;
     if (!prompt || !left || !right) return { error: `${i + 1}行目: お題・左・右の3つを入れてください` };
     if (target === null) return { error: `${i + 1}行目: 正解（4列目）は0〜100の数字にしてください` };
-    questions.push({ prompt, left, right, target, ...(comment ? { comment } : {}) });
+    const seconds = toSeconds(rawSeconds);
+    if (seconds === null) return { error: `${i + 1}行目: ${SECONDS_ERROR}` };
+    questions.push({ prompt, left, right, target, ...(comment ? { comment } : {}), ...(seconds ? { seconds } : {}) });
   }
   if (questions.length === 0) return { error: "問題が1つもありません" };
   return { questions };
@@ -80,20 +85,42 @@ function parseJson(body: string): { questions: QuestionInput[] } | { error: stri
     if (!r?.prompt || !r?.left || !r?.right || target === null) {
       return { error: `${i + 1}問目: prompt・left・right・target(0〜100) が必要です` };
     }
-    questions.push({ prompt: r.prompt, left: r.left, right: r.right, target, ...(r.comment ? { comment: r.comment } : {}) });
+    const seconds = toSeconds(String(r.seconds ?? ""));
+    if (seconds === null) return { error: `${i + 1}問目: seconds は${MIN_SECONDS}〜${MAX_SECONDS}の整数にしてください` };
+    questions.push({
+      prompt: r.prompt,
+      left: r.left,
+      right: r.right,
+      target,
+      ...(r.comment ? { comment: r.comment } : {}),
+      ...(seconds ? { seconds } : {}),
+    });
   }
   return { questions };
 }
 
+const halfWidth = (raw: string) => raw.replace(/[０-９．]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0));
+
+const SECONDS_ERROR = `所要時間（6列目）は${MIN_SECONDS}〜${MAX_SECONDS}秒の整数にしてください（空欄なら60秒）`;
+
+// Accepts "45", "45秒", "45s" and full-width digits. Blank gives 0 (use the default); bad input gives null.
+function toSeconds(raw: string): number | null {
+  const s = halfWidth(raw).replace(/(秒|sec|s|\s)/gi, "");
+  if (!s) return 0;
+  if (!/^\d+$/.test(s)) return null;
+  const v = Number(s);
+  return v >= MIN_SECONDS && v <= MAX_SECONDS ? v : null;
+}
+
 // Accepts "75", "75%", "75.5" and full-width digits ("７５").
 function toTarget(raw: string): number | null {
-  const s = raw.replace(/[０-９．]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).replace(/[%％\s]/g, "");
+  const s = halfWidth(raw).replace(/[%％\s]/g, "");
   if (!/^\d+(\.\d+)?$/.test(s)) return null;
   const v = Number(s);
   return v >= 0 && v <= 100 ? v : null;
 }
 
 export function toTsv(questions: Question[]): string {
-  const rows = questions.map((q) => [q.prompt, q.left, q.right, String(q.target), q.comment ?? ""]);
+  const rows = questions.map((q) => [q.prompt, q.left, q.right, String(q.target), q.comment ?? "", String(q.seconds)]);
   return [TSV_HEADER, ...rows].map((r) => r.join("\t")).join("\n");
 }

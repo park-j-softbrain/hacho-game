@@ -22,7 +22,7 @@ const Q = [
 function started(now = 0): GameState {
   const s = initialState(Q);
   s.tableCount = 3;
-  expect(applyAdmin(s, { t: "start", qid: s.questions[0].id, seconds: 60 }, now)).toBeUndefined();
+  expect(applyAdmin(s, { t: "start", qid: s.questions[0].id }, now)).toBeUndefined();
   return s;
 }
 
@@ -143,6 +143,12 @@ describe("views", () => {
   });
 });
 
+const parsed = (text: string) => {
+  const r = parseQuestions(text);
+  if ("error" in r) throw new Error(r.error);
+  return r.questions;
+};
+
 describe("question import", () => {
   it("reads rows pasted from a spreadsheet, skipping the header", () => {
     const text = "お題\t左\t右\t正解\t解説\n富士山の高さ\t0m\t5000m\t７５.５%\t3,776m\n\n朝型？\t朝型\t夜型\t40\n";
@@ -154,6 +160,24 @@ describe("question import", () => {
     });
   });
 
+  it("reads each question's answer time from the 6th column, 60 s when blank", () => {
+    const text = "お題\t左\t右\t正解\t解説\t所要時間\na\tb\tc\t50\t\t45\nd\te\tf\t60\tメモ\t９０秒\ng\th\ti\t70";
+    expect(parseQuestions(text)).toEqual({
+      questions: [
+        { prompt: "a", left: "b", right: "c", target: 50, seconds: 45 },
+        { prompt: "d", left: "e", right: "f", target: 60, comment: "メモ", seconds: 90 },
+        { prompt: "g", left: "h", right: "i", target: 70 },
+      ],
+    });
+    expect(parseQuestions("a\tb\tc\t50\t\t3")).toEqual({
+      error: "1行目: 所要時間（6列目）は5〜600秒の整数にしてください（空欄なら60秒）",
+    });
+    const s = initialState(parsed(text));
+    expect(s.questions.map((q) => q.seconds)).toEqual([45, 90, 60]);
+    applyAdmin(s, { t: "start", qid: s.questions[0].id }, 1000);
+    expect(s.deadline).toBe(46000);
+  });
+
   it("points at the bad row", () => {
     expect(parseQuestions("a\tb\tc\t50\nx\ty\tz\t120")).toEqual({ error: "2行目: 正解（4列目）は0〜100の数字にしてください" });
     expect(parseQuestions("a\t\tc\t50")).toEqual({ error: "1行目: お題・左・右の3つを入れてください" });
@@ -162,7 +186,7 @@ describe("question import", () => {
   it("round-trips through the export", () => {
     const s = initialState(Q);
     const parsed = parseQuestions(toTsv(s.questions));
-    expect(parsed).toEqual({ questions: Q });
+    expect(parsed).toEqual({ questions: Q.map((q) => ({ ...q, seconds: 60 })) });
   });
 
   it("is refused mid-round but keeps scores otherwise", () => {
@@ -224,7 +248,7 @@ describe("editing questions", () => {
 
     const edit = { prompt: "直した問題", left: "A", right: "B", target: 10 };
     expect(applyAdmin(s, { t: "updateQuestion", id: added.id, question: edit }, 0)).toBeUndefined();
-    expect(s.questions[2]).toEqual({ id: added.id, ...edit }); // comment cleared, id kept
+    expect(s.questions[2]).toEqual({ id: added.id, ...edit, seconds: 60 }); // comment cleared, id kept, default time
 
     expect(applyAdmin(s, { t: "deleteQuestion", id: s.questions[0].id }, 0)).toBeUndefined();
     expect(s.questions.map((q) => q.prompt)).toEqual(["朝型？夜型？", "直した問題"]);
@@ -235,6 +259,7 @@ describe("editing questions", () => {
     expect(applyAdmin(s, { t: "addQuestion", question: { ...NEW, prompt: "  " } }, 0)).toBe("お題を入力してください");
     expect(applyAdmin(s, { t: "addQuestion", question: { ...NEW, target: 101 } }, 0)).toMatch(/正解/);
     expect(applyAdmin(s, { t: "addQuestion", question: { ...NEW, target: NaN } }, 0)).toMatch(/正解/);
+    expect(applyAdmin(s, { t: "addQuestion", question: { ...NEW, seconds: 2 } }, 0)).toMatch(/回答時間/);
     expect(applyAdmin(s, { t: "updateQuestion", id: "nope", question: NEW }, 0)).toBeTruthy();
     expect(applyAdmin(s, { t: "deleteQuestion", id: "nope" }, 0)).toBeTruthy();
     expect(s.questions).toHaveLength(2);

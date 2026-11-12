@@ -4,6 +4,7 @@ import {
   applyTable,
   buildView,
   closeIfExpired,
+  DEFAULT_SECONDS,
   GRACE_MS,
   initialState,
   type AdminMsg,
@@ -55,6 +56,8 @@ export class Game extends DurableObject<Env> {
     ctx.blockConcurrencyWhile(async () => {
       const stored = await ctx.storage.get<GameState>("state");
       this.s = { ...initialState(SAMPLE_QUESTIONS), ...stored };
+      // Questions saved before each had its own answer time take the old game-wide one.
+      for (const q of this.s.questions) q.seconds ??= this.s.seconds ?? DEFAULT_SECONDS;
       let secret = await ctx.storage.get<string>("tableSecret");
       if (!secret) {
         secret = randomSecret();

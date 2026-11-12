@@ -1,5 +1,5 @@
-import { useEffect, useState } from "preact/hooks";
-import type { QuestionInput, View } from "../../shared/game";
+import { useState } from "preact/hooks";
+import { DEFAULT_SECONDS, MAX_SECONDS, MIN_SECONDS, type QuestionInput, type View } from "../../shared/game";
 import { parseQuestions, toTsv } from "../../shared/questions";
 import { Dial, Ends, fmt } from "../Dial";
 import { storage, useGame } from "../net";
@@ -145,8 +145,6 @@ function Console({ k, onLogout }: { k: string; onLogout: () => void }) {
 
 function Controls({ view, send }: { view: View; send: Send }) {
   const admin = view.admin!;
-  const [seconds, setSeconds] = useState(admin.seconds);
-  useEffect(() => setSeconds(admin.seconds), [admin.seconds]);
   const questions = admin.questions;
   const current = questions.findIndex((q) => q.id === view.qid);
   // The next question not yet played, looking forward from the current one first.
@@ -154,7 +152,7 @@ function Controls({ view, send }: { view: View; send: Send }) {
     questions.slice(current + 1).find((q) => !q.done) ??
     questions.find((q) => !q.done && q.id !== view.qid) ??
     null;
-  const start = (qid: string) => send({ t: "start", qid, seconds });
+  const start = (qid: string) => send({ t: "start", qid });
   const q = questions[current];
   const open = view.phase === "open";
 
@@ -190,7 +188,7 @@ function Controls({ view, send }: { view: View; send: Send }) {
         )}
         {!open && view.phase !== "closed" && next && (
           <button class="primary" onClick={() => start(next.id)}>
-            ▶ Q{questions.indexOf(next) + 1} を出題
+            ▶ Q{questions.indexOf(next) + 1} を出題（{next.seconds}秒）
           </button>
         )}
         {!open && view.phase !== "closed" && !next && (
@@ -210,17 +208,6 @@ function Controls({ view, send }: { view: View; send: Send }) {
             待機画面に戻す
           </button>
         )}
-        <label class="inline controls-time">
-          回答時間
-          <input
-            type="number"
-            min={5}
-            max={600}
-            value={seconds}
-            onInput={(e) => setSeconds(Number(e.currentTarget.value))}
-          />
-          秒
-        </label>
       </div>
     </section>
   );
@@ -446,7 +433,7 @@ function Questions({ view, send }: { view: View; send: Send }) {
               <p class="question-prompt">{q.prompt}</p>
               <p class="question-meta">
                 正解 <b class="display">{fmt(q.target)}</b>・{q.left} ↔{" "}
-                {q.right}
+                {q.right}・{q.seconds}秒
               </p>
               <button
                 class={q.done || live ? "secondary" : "primary"}
@@ -455,7 +442,7 @@ function Questions({ view, send }: { view: View; send: Send }) {
                     confirm(
                       "出題中の問題を中断して、この問題を出題しますか？",
                     )) &&
-                  send({ t: "start", qid: q.id, seconds: admin.seconds })
+                  send({ t: "start", qid: q.id })
                 }
               >
                 {q.done || live ? "もう一度" : "出題"}
@@ -519,14 +506,22 @@ function QuestionForm({
     initial ? String(initial.target) : "",
   );
   const [comment, setComment] = useState(initial?.comment ?? "");
+  const [seconds, setSeconds] = useState(String(initial?.seconds ?? DEFAULT_SECONDS));
   const value = target.trim() === "" ? NaN : Number(target);
-  const valid = prompt.trim() !== "" && value >= 0 && value <= 100;
+  const secs = seconds.trim() === "" ? NaN : Number(seconds);
+  const valid =
+    prompt.trim() !== "" &&
+    value >= 0 &&
+    value <= 100 &&
+    Number.isInteger(secs) &&
+    secs >= MIN_SECONDS &&
+    secs <= MAX_SECONDS;
   return (
     <form
       class="card question-card question-form"
       onSubmit={(e) => {
         e.preventDefault();
-        if (valid) onSave({ prompt, left, right, target: value, comment });
+        if (valid) onSave({ prompt, left, right, target: value, comment, seconds: secs });
       }}
     >
       <h3>{title}</h3>
@@ -577,6 +572,18 @@ function QuestionForm({
           onInput={(e) => setComment(e.currentTarget.value)}
         />
       </label>
+      <label>
+        所要時間（秒）
+        <input
+          type="number"
+          min={MIN_SECONDS}
+          max={MAX_SECONDS}
+          step={1}
+          required
+          value={seconds}
+          onInput={(e) => setSeconds(e.currentTarget.value)}
+        />
+      </label>
       {note && <p class="small">{note}</p>}
       <div class="controls-buttons">
         <button class="primary" type="submit" disabled={!valid}>
@@ -594,7 +601,6 @@ function Settings({ view, send }: { view: View; send: Send }) {
   const admin = view.admin!;
   const [title, setTitle] = useState(view.title);
   const [tableCount, setTableCount] = useState(admin.tableCount);
-  const [seconds, setSeconds] = useState(admin.seconds);
   return (
     <section class="panel">
       <h2>設定</h2>
@@ -602,7 +608,7 @@ function Settings({ view, send }: { view: View; send: Send }) {
         class="settings"
         onSubmit={(e) => {
           e.preventDefault();
-          send({ t: "settings", title, tableCount, seconds });
+          send({ t: "settings", title, tableCount });
         }}
       >
         <label>
@@ -623,16 +629,6 @@ function Settings({ view, send }: { view: View; send: Send }) {
             onInput={(e) => setTableCount(Number(e.currentTarget.value))}
           />
         </label>
-        <label>
-          回答時間（秒）
-          <input
-            type="number"
-            min={5}
-            max={600}
-            value={seconds}
-            onInput={(e) => setSeconds(Number(e.currentTarget.value))}
-          />
-        </label>
         <button class="primary" type="submit">
           保存
         </button>
@@ -649,14 +645,14 @@ function Import({ view, send }: { view: View; send: Send }) {
     <section class="panel">
       <h2>問題の読み込み</h2>
       <p class="muted">
-        スプレッドシートで「お題・左・右・正解(0〜100)・解説」の5列を作り、範囲をコピーして貼り付けてください（見出し行はあってもOK、解説は省略可）。
+        スプレッドシートで「お題・左・右・正解(0〜100)・解説・所要時間(秒)」の6列を作り、範囲をコピーして貼り付けてください。見出し行はあってもかまいません。解説は省略でき、所要時間が空欄の問題は60秒になります。
         読み込むと問題一覧が置き換わります。これまでの得点は残ります。
       </p>
       <textarea
         rows={8}
         value={text}
         placeholder={
-          "お題\t左\t右\t正解(0-100)\t解説\n富士山の高さは？\t0m\t5,000m\t75.5\t3,776m"
+          "お題\t左\t右\t正解(0-100)\t解説\t所要時間(秒)\n富士山の高さは？\t0m\t5,000m\t75.5\t3,776m\t45"
         }
         onInput={(e) => setText(e.currentTarget.value)}
       />
