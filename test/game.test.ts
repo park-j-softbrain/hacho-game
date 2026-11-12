@@ -216,6 +216,7 @@ describe("score graph", () => {
     const view = buildView(s, { role: "screen" }, new Set(), 6000);
     expect(view.board).toEqual({
       lastQNo: 2,
+      qNos: [1, 2],
       rows: [
         { n: 1, pts: [0.5, 60], adjust: 0, prevRank: 1 },
         { n: 2, pts: [5.5, 0], adjust: 0, prevRank: 2 },

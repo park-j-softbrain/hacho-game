@@ -215,26 +215,15 @@ function Result({ view }: { view: View }) {
   );
 }
 
-// The ranking as bars: one block per revealed question (blue halftone), the
-// latest question in solid pink, and how far each table moved since the last one.
+// The ranking as a table of numbers: each question's miss (the latest in pink),
+// the total, and how far each table moved since the last question.
 function ScoreChart({ view, board }: { view: View; board: Board }) {
   const rows = new Map(board.rows.map((r) => [r.n, r]));
   const tables = [...view.tables].sort((a, b) => a.rank - b.rank || a.n - b.n);
-  const top = Math.max(
-    0,
-    ...tables.map((t) => t.score),
-    ...board.rows.map((r) => r.pts.reduce((a, b) => a + b, 0)),
-  );
-  // Gridlines every 5, 10, 20, … so there are never more than about eight.
-  const step = [5, 10, 20, 25, 50, 100, 200].find((x) => top / x <= 8) ?? 500;
-  const max = Math.max(2 * step, Math.ceil(top / step) * step);
-  const ticks = Array.from({ length: max / step + 1 }, (_, i) => i * step);
   const columns = tables.length > 12 ? 2 : 1;
   const perColumn = Math.ceil(tables.length / columns);
-  const latest = board.lastQNo
-    ? `Q${board.lastQNo} のズレ`
-    : "最新の問題のズレ";
-  const pct = (v: number) => `${(v / max) * 100}%`;
+  const qNos = board.qNos;
+  const last = qNos.length - 1;
 
   return (
     <div class="scoreboard">
@@ -244,86 +233,52 @@ function ScoreChart({ view, board }: { view: View; board: Board }) {
           <small class="board-note">少ないほど上位</small>
         </h2>
         <div class="legend">
-          <span>
-            <i class="swatch swatch-past" aria-hidden="true" />
-            これまでのズレ（1問ずつ区切り）
-          </span>
-          <span>
-            <i class="swatch swatch-last" aria-hidden="true" />
-            {latest}
-          </span>
+          <span>数字は各問題のズレ</span>
+          {board.lastQNo && (
+            <span>
+              <i class="swatch swatch-last" aria-hidden="true" />
+              最新の問題（Q{board.lastQNo}）
+            </span>
+          )}
         </div>
       </div>
       <div
         class="chart"
-        role="img"
-        aria-label={`合計のズレのグラフ。${tables.map((t) => `${t.rank}位 ${t.name} ${fmt(t.score)}点`).join("、")}`}
-        style={{ "--columns": columns, "--rows": perColumn }}
+        role="table"
+        aria-label={`合計のズレ。${tables.map((t) => `${t.rank}位 ${t.name} ${fmt(t.score)}点`).join("、")}`}
+        style={{ "--columns": columns, "--rows": perColumn, "--qs": Math.max(1, qNos.length) }}
       >
         {Array.from({ length: columns }, (_, c) => (
           <div class="chart-column">
-            <div class="chart-axis" aria-hidden="true">
-              {ticks.map((v) => (
-                <span style={{ left: pct(v) }}>{v}</span>
-              ))}
+            <div class="chart-head" aria-hidden="true">
+              <span class="pts-row">
+                {qNos.map((q, i) => (
+                  <span class={`pts-q${i === last ? " pts-q-last" : ""}`}>Q{q}</span>
+                ))}
+              </span>
+              <span class="chart-head-total">合計</span>
             </div>
             <div class="chart-rows">
               {tables.slice(c * perColumn, (c + 1) * perColumn).map((t) => {
                 const r = rows.get(t.n);
                 const pts = r?.pts ?? [];
-                const lastPts = pts.length ? pts[pts.length - 1] : null;
                 const move = r?.prevRank != null ? r.prevRank - t.rank : null;
                 return (
                   <div class="chart-row">
-                    <span
-                      class={`rank-badge${t.rank === 1 ? " rank-1" : ""}`}
-                    >
+                    <span class={`rank-badge${t.rank === 1 ? " rank-1" : ""}`}>
                       {t.rank}
                     </span>
                     <span class="chart-name">{t.name}</span>
-                    <div class="bar-cell">
-                      {ticks.map((v) => (
-                        <i
-                          class="gridline"
-                          aria-hidden="true"
-                          style={{ left: pct(v) }}
-                        />
+                    <span class="pts-row">
+                      {pts.map((p, i) => (
+                        <span class={`pts${i === last ? " pts-last" : ""}`}>{fmt(p)}</span>
                       ))}
-                      <div class="bar">
-                        {pts.map(
-                          (p, i) =>
-                            p > 0 && (
-                              <span
-                                class={`seg${i === pts.length - 1 ? " seg-last" : ""}`}
-                                style={{
-                                  width: `calc(${pct(p)} - var(--seg-gap))`,
-                                }}
-                              >
-                                {i === pts.length - 1 && `+${fmt(p)}`}
-                              </span>
-                            ),
-                        )}
-                        {r && r.adjust > 0 && (
-                          <span
-                            class="seg seg-adjust"
-                            style={{
-                              width: `calc(${pct(r.adjust)} - var(--seg-gap))`,
-                            }}
-                          />
-                        )}
-                        {lastPts === 0 && <span class="seg-note">+0</span>}
-                        {r && r.adjust < 0 && (
-                          <span class="seg-note">調整 {r.adjust}</span>
-                        )}
-                      </div>
-                    </div>
+                    </span>
                     <span class="chart-total display">
                       {fmt(t.score)}
                       <small>点</small>
                     </span>
-                    <span
-                      class={`move${move ? (move > 0 ? " move-up" : " move-down") : ""}`}
-                    >
+                    <span class={`move${move ? (move > 0 ? " move-up" : " move-down") : ""}`}>
                       {move == null
                         ? ""
                         : move > 0

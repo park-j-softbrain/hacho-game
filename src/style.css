@@ -1226,6 +1226,7 @@ body[data-page="screen"] {
 .scoreboard {
   flex: 1;
   min-height: 0;
+  padding-bottom: 5vh; /* clear the view switch in the corner */
   display: flex;
   flex-direction: column;
   gap: 1.5vh;
@@ -1258,21 +1259,12 @@ body[data-page="screen"] {
   border-radius: 8px;
 }
 
-.swatch-past,
-.seg {
-  background-color: var(--card);
-  background-image: radial-gradient(circle, var(--blue) 0 2.3px, transparent 2.9px);
-  background-size: 7px 7px;
-}
-
-.swatch-last,
-.seg-last {
+.swatch-last {
   background: var(--pink);
 }
 
 .chart {
-  --row-h: calc(64vh / var(--rows));
-  --seg-gap: 0.3vw;
+  --row-h: calc(60vh / var(--rows));
   flex: 1;
   min-height: 0;
   display: grid;
@@ -1280,27 +1272,33 @@ body[data-page="screen"] {
   gap: 3vw;
 }
 
-/* columns: rank, name, bar, total, movement */
+/* columns: rank, name, per-question numbers, total, movement */
 .chart-column {
   display: grid;
-  grid-template-columns: calc(var(--row-h) * 0.95) minmax(6em, 28%) minmax(0, 1fr) 3.8em 3.4em;
-  grid-template-rows: 3.2vh minmax(0, 1fr);
-  column-gap: 1vw;
+  grid-template-columns: calc(var(--row-h) * 0.95) minmax(4em, 1fr) max-content max-content 3.4em;
+  grid-template-rows: 3.4vh minmax(0, 1fr);
+  column-gap: 1.2vw;
   font-size: clamp(1.3vh, calc(var(--row-h) * 0.42), 3vh);
   min-height: 0;
 }
 
-.chart-axis {
-  grid-column: 3;
-  position: relative;
-  font-size: 1.9vh;
-  font-weight: 700;
+.chart-head {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: subgrid;
+  align-items: end;
+  font-weight: 900;
+  color: var(--mix);
 }
 
-.chart-axis span {
-  position: absolute;
-  top: 0;
-  transform: translateX(-50%);
+.chart-head .pts-row {
+  grid-column: 3;
+}
+
+.chart-head-total {
+  grid-column: 4;
+  font-size: 1.9vh;
+  text-align: right;
 }
 
 .chart-rows {
@@ -1312,19 +1310,45 @@ body[data-page="screen"] {
   align-items: center;
 }
 
-.bar-cell {
-  position: relative;
-  align-self: stretch;
-  display: flex;
-  align-items: center;
+/* one cell per question; the numbers shrink when there are many questions */
+.pts-row {
+  display: grid;
+  grid-template-columns: repeat(var(--qs), 3.2em);
+  gap: 0.25em;
+  font-size: min(0.8em, calc(52vw / var(--columns) / var(--qs) / 3.45));
 }
 
-.gridline {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  border-left: 2px dotted var(--blue);
-  opacity: 0.35;
+.pts-q {
+  text-align: center;
+  font-size: 0.85em;
+}
+
+.pts-q-last {
+  color: var(--pink);
+}
+
+.pts {
+  height: min(calc(var(--row-h) * 0.66), 5vh);
+  display: grid;
+  place-items: center;
+  border: 3px solid var(--blue);
+  border-radius: 10px;
+  background: var(--card);
+  font-family: var(--display);
+  color: var(--mix);
+  white-space: nowrap;
+  animation: pts-in 0.4s steps(4, end) both;
+}
+
+@keyframes pts-in {
+  from {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+}
+
+.pts-last {
+  background: var(--pink);
 }
 
 .chart-row {
@@ -1359,48 +1383,6 @@ body[data-page="screen"] {
   white-space: nowrap;
 }
 
-.bar {
-  position: relative;
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: var(--seg-gap);
-  height: min(calc(var(--row-h) * 0.66), 5vh);
-  transform-origin: left center;
-  animation: bar-in 0.66s steps(5, end) both;
-}
-
-.seg {
-  flex: none;
-  height: 100%;
-  min-width: 6px;
-  display: grid;
-  place-items: center;
-  border: 3px solid var(--blue);
-  border-radius: 10px;
-  font-family: var(--display);
-  color: var(--mix);
-  font-size: 0.85em;
-  overflow: hidden;
-}
-
-.seg-last {
-  background-image: none;
-}
-
-.seg-adjust {
-  background: var(--card);
-  border-style: dashed;
-}
-
-.seg-note {
-  padding-left: 0.4em;
-  font-family: var(--display);
-  font-size: 0.85em;
-  color: var(--mix);
-  white-space: nowrap;
-}
-
 .chart-total {
   font-size: 1.45em;
   line-height: 1;
@@ -1416,6 +1398,7 @@ body[data-page="screen"] {
 
 .move {
   justify-self: end;
+  box-sizing: border-box;
   min-width: 3.2em;
   padding: 0.25em 0;
   border-radius: 999px;

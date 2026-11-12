@@ -439,6 +439,7 @@ export type View = {
 
 export type Board = {
   lastQNo: number | null; // question number of the latest revealed question
+  qNos: number[]; // question number of each entry in pts
   rows: {
     n: number;
     pts: number[]; // points per revealed question, oldest first
@@ -460,8 +461,9 @@ export function buildBoard(s: GameState): Board {
     const before = rows.map((r) => round1(scoreOf(s, r.n) - r.pts[r.pts.length - 1]));
     rows.forEach((r, i) => (r.prevRank = 1 + before.filter((b) => b < before[i]).length));
   }
-  const lastIndex = s.questions.findIndex((q) => q.id === last);
-  return { lastQNo: lastIndex >= 0 ? lastIndex + 1 : null, rows };
+  const qNo = (id: string) => s.questions.findIndex((q) => q.id === id) + 1;
+  const lastIndex = last ? qNo(last) : 0;
+  return { lastQNo: lastIndex > 0 ? lastIndex : null, qNos: order.map(qNo), rows };
 }
 
 export type Viewer =
