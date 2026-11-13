@@ -10,7 +10,14 @@ export function serverNow(): number {
   return Date.now() + clockOffset;
 }
 
-const POLL_MS = 1000;
+// How often the HTTPS fallback asks. Each ask is a billed request, so it asks
+// quickly only when a delay would show: while a question is open, and on the
+// projector. A page whose game hasn't changed for a while slows down further,
+// and a hidden page stops asking until it is shown again.
+const FAST_MS = 1000;
+const SLOW_MS = 5000;
+const QUIET_MS = 10000;
+const QUIET_AFTER = 10 * 60_000;
 const BUSY_MS = 10000; // how long to wait when the server says to slow down
 
 // Keeps one WebSocket to the game open: reconnects with backoff, and checks the
@@ -19,7 +26,7 @@ const BUSY_MS = 10000; // how long to wait when the server says to slow down
 //
 // Some company web filters decrypt HTTPS and break the WebSocket handshake. When
 // sockets keep failing before they open, the page asks over plain HTTPS about
-// once a second instead (POST /api), and keeps trying the WebSocket now and then.
+// over plain HTTPS instead (POST /api, see pollEvery), and keeps trying the WebSocket now and then.
 export function useGame(query: string) {
   const [view, setView] = useState<View | null>(null);
   const [status, setStatus] = useState<Status>("connecting");
@@ -36,8 +43,10 @@ export function useGame(query: string) {
     let lastMessage = 0;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
 
-    const handle = (m: { t: string; msg?: string; now?: number }) => {
+    let phase = "";
+    const handle = (m: { t: string; msg?: string; now?: number; phase?: string }) => {
       if (m.t === "state") {
+        phase = m.phase!;
         clockOffset = m.now! - Date.now();
         setView(m as View);
       } else if (m.t === "error") {
@@ -57,10 +66,19 @@ export function useGame(query: string) {
     let inflight = false;
     let pollTimer: ReturnType<typeof setTimeout> | undefined;
     let busyUntil = 0;
+    let changedAt = Date.now();
+    const pollEvery = () =>
+      Date.now() - changedAt > QUIET_AFTER
+        ? QUIET_MS
+        : phase === "open" || query.startsWith("role=screen")
+          ? FAST_MS
+          : SLOW_MS;
 
     const poll = async () => {
       clearTimeout(pollTimer);
       if (!polling || stopped || inflight) return;
+      // Hidden: wait for wake() to ask again, unless something needs sending.
+      if (document.visibilityState === "hidden" && !queue.length) return;
       inflight = true;
       const msgs = queue;
       queue = [];
@@ -74,6 +92,7 @@ export function useGame(query: string) {
         if (res.status === 429) busyUntil = Date.now() + BUSY_MS;
         if (!res.ok) throw new Error(String(res.status));
         const r: { rev: string; msgs: { t: string }[] } = await res.json();
+        if (r.rev !== rev) changedAt = Date.now();
         rev = r.rev;
         r.msgs.forEach(handle);
         if (polling && !wsRef.current) setStatus("open");
@@ -83,7 +102,7 @@ export function useGame(query: string) {
         if (polling && !wsRef.current) setStatus("closed");
       }
       inflight = false;
-      const wait = Math.max(queue.length ? 0 : POLL_MS, busyUntil - Date.now());
+      const wait = Math.max(queue.length ? 0 : pollEvery(), busyUntil - Date.now());
       if (polling && !stopped) pollTimer = setTimeout(poll, wait);
     };
 
