@@ -738,7 +738,7 @@ function Import({ view, send }: { view: View; send: Send }) {
         rows={8}
         value={text}
         placeholder={
-          "お題\t左\t右\t正解\t解説\t所要時間(秒)\t配点\t針の刻み\n富士山の高さは？\t0m\t5,000m\t3776\t剣ヶ峰の標高\t45\t200\t10"
+          "お題\t左\t右\t正解\t解説\t所要時間(秒)\t配点\t針の刻み\n富士山の高さは？\t0m\t5,000m\t3776\t剣ヶ峰の標高\t45\t200\t10\n日本の国旗の赤い丸は、正確にはどんな赤？\t明るい赤 #FF9A9A\t暗い赤 #4A0012\t#BC002D\t法律では「紅色」とだけ決まっています\t60\t100\t"
         }
         onInput={(e) => setText(e.currentTarget.value)}
       />

@@ -25,6 +25,14 @@ export const SAMPLE_QUESTIONS: QuestionInput[] = [
     comment: "剣ヶ峰の標高は3,776mです",
   },
   {
+    prompt: "日本の国旗の赤い丸は、正確にはどんな赤？",
+    left: "明るい赤 #FF9A9A",
+    right: "暗い赤 #4A0012",
+    target: 0,
+    color: "#BC002D",
+    comment: "法律では「紅色」とだけ決まっています。#BC002D はよく使われる値です",
+  },
+  {
     prompt: "（サンプル）社員アンケート：みんなは朝型？夜型？",
     left: "朝型",
     right: "夜型",
