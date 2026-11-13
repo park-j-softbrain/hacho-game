@@ -2,6 +2,8 @@
 // the pages only render the View built for them, so the target never reaches a
 // phone or the projector before the reveal.
 
+import { colorEnds, colorPosition, makeBand, parseColor } from "./color";
+
 export type Question = {
   id: string;
   prompt: string; // お題
@@ -12,6 +14,7 @@ export type Question = {
   seconds: number; // 回答時間
   worth: number; // 配点: 範囲の端から端までずれたときの点数
   step?: number; // 針の刻み、問題の単位で。なければ範囲の約1%
+  color?: string; // 色の問題（左右が色コード）の正解の色 "#BC002D"。target はその帯の上の位置 0〜100
 };
 
 // seconds and worth may be left out: they fall back to DEFAULT_SECONDS and DEFAULT_WORTH.
@@ -25,7 +28,8 @@ export const MAX_STEPS = 1000; // the finest step: 1/1000 of the range
 // When both end labels start with a number ("0m" and "5,000m"), the dial runs
 // between them in that unit. Otherwise it is the plain 0–100 scale.
 
-export type Scale = { min: number; max: number; unit: string; step: number };
+// band: a colour question's dial, one colour per position 0–100 (see color.ts).
+export type Scale = { min: number; max: number; unit: string; step: number; band?: string[] };
 
 export function halfWidth(raw: string): string {
   return raw
@@ -42,6 +46,7 @@ export function parseLabel(label: string): { n: number; unit: string } | null {
 }
 
 export function rangeOf(left: string, right: string): { min: number; max: number; unit: string } {
+  if (colorEnds(left, right)) return { min: 0, max: 100, unit: "" };
   const a = parseLabel(left);
   const b = parseLabel(right);
   if (!a || !b || a.n === b.n) return { min: 0, max: 100, unit: "" };
@@ -60,10 +65,32 @@ function stepOk(step: unknown, width: number): step is number {
   return typeof step === "number" && Number.isFinite(step) && step > 0 && step <= Math.abs(width) && Math.abs(width) / step <= MAX_STEPS;
 }
 
-export function scaleOf(q: { left: string; right: string; step?: number }): Scale {
+export function scaleOf(q: { left: string; right: string; step?: number; color?: string }): Scale {
   const r = rangeOf(q.left, q.right);
   const width = r.max - r.min;
-  return { ...r, step: stepOk(q.step, width) ? q.step : defaultStep(width) };
+  const sc: Scale = { ...r, step: stepOk(q.step, width) ? q.step : defaultStep(width) };
+  const ends = colorEnds(q.left, q.right);
+  if (ends) {
+    const at = colorTarget(q);
+    const hex = q.color ? parseColor(q.color)?.hex : undefined;
+    sc.band = makeBand(ends.left, ends.right, hex && at !== null ? { hex, at } : undefined);
+  }
+  return sc;
+}
+
+// A colour question's answer position: its colour placed by brightness between
+// the ends, then put on the needle's step grid so a perfect answer is possible.
+// null when the question has no answer colour or the colour is out of range.
+export function colorTarget(q: { left: string; right: string; step?: number; color?: string }): number | null {
+  const ends = colorEnds(q.left, q.right);
+  const c = q.color ? parseColor(q.color) : null;
+  if (!ends || !c) return null;
+  const at = colorPosition(ends.left, ends.right, c.hex);
+  if (at === null) return null;
+  const width = 100;
+  const step = stepOk(q.step, width) ? q.step : defaultStep(width);
+  // inside the ends, so the band still runs 左 → 正解 → 右
+  return round6(Math.min(100 - step, Math.max(step, Math.round(at / step) * step)));
 }
 
 // The nearest needle position: on the step grid counted from the left end, inside the range.
@@ -374,6 +401,7 @@ export function applyAdmin(s: GameState, m: AdminMsg, now: number): string | und
       Object.assign(old, fresh);
       if (!fresh.comment) delete old.comment;
       if (fresh.step === undefined) delete old.step;
+      if (fresh.color === undefined) delete old.color;
       // A question that was already revealed is scored again against its new answer.
       const r = s.results[old.id];
       if (r) r.points = scoreRound(s, old, r.answers);
@@ -435,7 +463,9 @@ function makeQuestion(s: GameState, q: QuestionInput, id = `q${s.nextId++}`): Qu
   const r = rangeOf(left, right);
   const lo = Math.min(r.min, r.max);
   const hi = Math.max(r.min, r.max);
-  const target = typeof q.target === "number" && Number.isFinite(q.target) ? q.target : (lo + hi) / 2;
+  const color = q.color ? parseColor(q.color)?.hex : undefined;
+  const at = color ? colorTarget({ left, right, step: q.step, color }) : null;
+  const target = at ?? (typeof q.target === "number" && Number.isFinite(q.target) ? q.target : (lo + hi) / 2);
   return {
     id,
     prompt: clean(q.prompt, 80),
@@ -446,6 +476,7 @@ function makeQuestion(s: GameState, q: QuestionInput, id = `q${s.nextId++}`): Qu
     seconds: clampInt(q.seconds ?? DEFAULT_SECONDS, MIN_SECONDS, MAX_SECONDS),
     worth: worthOk(q.worth) ? q.worth : DEFAULT_WORTH,
     ...(stepOk(q.step, r.max - r.min) ? { step: round6(q.step) } : {}),
+    ...(color && at !== null ? { color } : {}),
   };
 }
 
@@ -460,7 +491,16 @@ export function questionProblem(q: QuestionInput): string | null {
   const lo = Math.min(r.min, r.max);
   const hi = Math.max(r.min, r.max);
   const width = hi - lo;
-  if (typeof q.target !== "number" || !Number.isFinite(q.target) || q.target < lo || q.target > hi) {
+  if (colorEnds(q.left ?? "", q.right ?? "")) {
+    if (q.color !== undefined) {
+      if (!parseColor(q.color)) return "正解の色が読めません。#BC002D や rgb(188,0,45) の形で書いてください";
+      if (colorTarget({ left: q.left, right: q.right, color: q.color }) === null) {
+        return "正解の色は左と右の間の明るさにしてください";
+      }
+    } else if (typeof q.target !== "number" || !Number.isFinite(q.target) || q.target < 0 || q.target > 100) {
+      return "正解は色コード（#BC002D など）か0〜100の数字にしてください";
+    }
+  } else if (typeof q.target !== "number" || !Number.isFinite(q.target) || q.target < lo || q.target > hi) {
     return `正解は${formatValue(lo, r.unit)}〜${formatValue(hi, r.unit)}の数字にしてください`;
   }
   if (q.worth !== undefined && !worthOk(q.worth)) return "配点は1以上の整数にしてください";

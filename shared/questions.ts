@@ -1,3 +1,4 @@
+import { colorEnds, parseColor } from "./color";
 import { MAX_SECONDS, MIN_SECONDS, type Question, type QuestionInput, halfWidth, questionProblem } from "./game";
 
 // Loaded on first start. Replace them from the admin page (問題の読み込み).
@@ -44,6 +45,7 @@ export const TSV_HEADER = ["お題", "左", "右", "正解", "解説", "所要�
 // Rows pasted from a spreadsheet (tab-separated) or CSV without quotes:
 // お題, 左, 右, 正解, 解説(任意), 所要時間(秒, 空なら60秒), 配点(空なら100), 針の刻み(空なら範囲の約1%).
 // 正解 and 針の刻み are in the question's own unit ("0m"〜"5,000m" なら 3776, 10).
+// When 左 and 右 both hold a colour code ("明るい赤 #FF9A9A"), 正解 is a colour too.
 // A header row is skipped. A JSON array also works.
 export function parseQuestions(text: string): { questions: QuestionInput[] } | { error: string } {
   const body = text.trim();
@@ -58,13 +60,21 @@ export function parseQuestions(text: string): { questions: QuestionInput[] } | {
     const [prompt = "", left = "", right = "", rawTarget = "", comment = "", rawSeconds = "", rawWorth = "", rawStep = ""] = line
       .split(sep)
       .map((c) => c.trim());
-    const target = toNumber(rawTarget);
-    const isHeader = firstRow && target === null;
+    const colorRow = !!colorEnds(left, right);
+    const color = colorRow ? parseColor(rawTarget)?.hex : undefined;
+    const target = color ? 0 : toNumber(rawTarget);
+    const isHeader = firstRow && target === null && !colorRow;
     firstRow = false;
     if (isHeader) continue;
     const at = `${i + 1}行目: `;
     if (!prompt || !left || !right) return { error: `${at}お題・左・右の3つを入れてください` };
-    if (target === null) return { error: `${at}正解（4列目）を数字で入れてください` };
+    if (target === null) {
+      return {
+        error: colorRow
+          ? `${at}正解（4列目）を色コード（#BC002D など）か0〜100の数字で入れてください`
+          : `${at}正解（4列目）を数字で入れてください`,
+      };
+    }
     const seconds = toSeconds(rawSeconds);
     if (seconds === null) return { error: at + SECONDS_ERROR };
     const worth = rawWorth ? toNumber(rawWorth) : undefined;
@@ -76,6 +86,7 @@ export function parseQuestions(text: string): { questions: QuestionInput[] } | {
       left,
       right,
       target,
+      ...(color ? { color } : {}),
       ...(comment ? { comment } : {}),
       ...(seconds ? { seconds } : {}),
       ...(worth !== undefined ? { worth } : {}),
@@ -99,7 +110,8 @@ function parseJson(body: string): { questions: QuestionInput[] } | { error: stri
   if (!Array.isArray(rows) || rows.length === 0) return { error: "問題が1つもありません" };
   const questions: QuestionInput[] = [];
   for (const [i, r] of rows.entries()) {
-    const target = toNumber(String(r?.target ?? ""));
+    const color = colorEnds(String(r?.left ?? ""), String(r?.right ?? "")) ? parseColor(String(r?.target ?? ""))?.hex : undefined;
+    const target = color ? 0 : toNumber(String(r?.target ?? ""));
     if (!r?.prompt || !r?.left || !r?.right || target === null) {
       return { error: `${i + 1}問目: prompt・left・right・target が必要です` };
     }
@@ -110,6 +122,7 @@ function parseJson(body: string): { questions: QuestionInput[] } | { error: stri
       left: r.left,
       right: r.right,
       target,
+      ...(color ? { color } : {}),
       ...(r.comment ? { comment: r.comment } : {}),
       ...(seconds ? { seconds } : {}),
       ...(r.worth != null ? { worth: Number(r.worth) } : {}),
@@ -146,7 +159,7 @@ export function toTsv(questions: Question[]): string {
     q.prompt,
     q.left,
     q.right,
-    String(q.target),
+    q.color ?? String(q.target),
     q.comment ?? "",
     String(q.seconds),
     String(q.worth),

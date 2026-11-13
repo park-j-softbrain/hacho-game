@@ -12,7 +12,8 @@ import {
   scaleOf,
 } from "../../shared/game";
 import { parseQuestions, toTsv } from "../../shared/questions";
-import { Dial, Ends, fmt } from "../Dial";
+import { Dial, Ends, Shown, fmt, fmtOn } from "../Dial";
+import { colorEnds } from "../../shared/color";
 import { storage, useGame } from "../net";
 import { Banner, Center, Countdown, Logo, PHASE_LABEL } from "../ui";
 
@@ -274,13 +275,13 @@ function Answers({ view }: { view: View }) {
   }
   const values = [...answers.values()].map((a) => a.v);
   const sc = scaleOf(q);
-  const u = (v: number) => fmt(v, sc.unit);
+  const u = (v: number) => fmtOn(sc, v);
   return (
     <section class="panel">
       <h2>
         回答状況
         <span class="answers-target">
-          正解 <b class="display">{u(q.target)}</b>（管理者のみ表示）
+          正解 <b class="display"><Shown scale={sc} v={q.target} /></b>（管理者のみ表示）
         </span>
       </h2>
       <div class="answers">
@@ -481,7 +482,7 @@ function Questions({ view, send }: { view: View; send: Send }) {
               </div>
               <p class="question-prompt">{q.prompt}</p>
               <p class="question-meta">
-                正解 <b class="display">{fmt(q.target, scaleOf(q).unit)}</b>・{q.left} ↔{" "}
+                正解 <b class="display"><Shown scale={scaleOf(q)} v={q.target} /></b>・{q.left} ↔{" "}
                 {q.right}・{q.seconds}秒・配点{q.worth}
                 {q.step !== undefined && `・刻み${fmt(q.step, scaleOf(q).unit)}`}
               </p>
@@ -552,7 +553,7 @@ function QuestionForm({
   const [prompt, setPrompt] = useState(initial?.prompt ?? "");
   const [left, setLeft] = useState(initial?.left ?? "");
   const [right, setRight] = useState(initial?.right ?? "");
-  const [target, setTarget] = useState(initial ? String(initial.target) : "");
+  const [target, setTarget] = useState(initial ? (initial.color ?? String(initial.target)) : "");
   const [comment, setComment] = useState(initial?.comment ?? "");
   const [seconds, setSeconds] = useState(String(initial?.seconds ?? DEFAULT_SECONDS));
   const [worth, setWorth] = useState(String(initial?.worth ?? DEFAULT_WORTH));
@@ -563,6 +564,7 @@ function QuestionForm({
     left,
     right,
     target: num(target),
+    ...(colorEnds(left, right) && !/^\s*-?[\d.]+\s*$/.test(target) ? { color: target.trim() } : {}),
     comment,
     seconds: num(seconds),
     worth: num(worth),
@@ -610,12 +612,12 @@ function QuestionForm({
         </label>
       </div>
       <p class="small">
-        左右が「0m」「5,000m」のように数字で始まると、その範囲と単位でダイヤルを読みます。今の範囲：{span}
+        左右が「0m」「5,000m」のように数字で始まると、その範囲と単位でダイヤルを読みます。左右の両方に「明るい赤 #FF9A9A」のように色コードを入れると、色のダイヤルになります。今の範囲：{colorEnds(left, right) ? "色（左 → 正解 → 右）" : span}
       </p>
       <label>
-        正解（{span}）
+        {colorEnds(left, right) ? "正解（色コード #BC002D か 0〜100 の位置）" : `正解（${span}）`}
         <input
-          type="number"
+          type={colorEnds(left, right) ? "text" : "number"}
           step="any"
           required
           value={target}
@@ -729,6 +731,7 @@ function Import({ view, send }: { view: View; send: Send }) {
         スプレッドシートで「お題・左・右・正解・解説・所要時間(秒)・配点・針の刻み」の8列を作り、範囲をコピーして貼り付けてください。見出し行はあってもかまいません。
         左右が「0m」「5,000m」のように数字で始まると、その範囲と単位でダイヤルを読みます。正解と針の刻みはその単位で書きます（5,000mの問題なら 3776）。
         解説・所要時間・配点・針の刻みは空欄にでき、それぞれ「なし」「60秒」「100」「範囲の約1%」になります。点数は「ズレ ÷ 範囲の幅 × 配点」です。
+        左右の両方に「明るい赤 #FF9A9A」「暗い赤 #4A0012」のように色コードを入れると、色のダイヤルになります。正解も「#BC002D」のように色コードで書き、左右の間の明るさにしてください。
         読み込むと問題一覧が置き換わります。これまでの得点は残ります。
       </p>
       <textarea

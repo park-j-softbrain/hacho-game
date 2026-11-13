@@ -1,7 +1,7 @@
 import type { ComponentChildren } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { type View, fractionOf, snap } from "../../shared/game";
-import { Dial, Ends, fmt } from "../Dial";
+import { Dial, Ends, Shown, fmt, fmtOn } from "../Dial";
 import { serverNow, useGame, useTick } from "../net";
 import { click, play, useSound } from "../sound";
 import { Banner, Burst, Center, Countdown } from "../ui";
@@ -87,7 +87,13 @@ function Body({
           </DialCard>
           <p class="big display">締め切りました</p>
           <p>
-            {me.answer ? `あなたの回答: ${fmt(me.answer.v, view.question!.scale.unit)}` : "回答なし"}
+            {me.answer ? (
+              <>
+                あなたの回答: <Shown scale={view.question!.scale} v={me.answer.v} />
+              </>
+            ) : (
+              "回答なし"
+            )}
             ・正解発表をお待ちください
           </p>
         </div>
@@ -118,14 +124,14 @@ function Body({
               scale={sc}
               value={me.answer?.v ?? null}
               target={result.target}
-              label={`ダイヤル。正解${fmt(result.target, sc.unit)}${me.answer ? `、あなたの針は${fmt(me.answer.v, sc.unit)}` : ""}`}
+              label={`ダイヤル。正解${fmtOn(sc, result.target)}${me.answer ? `、あなたの針は${fmtOn(sc, me.answer.v)}` : ""}`}
             />
             <Ends left={view.question!.left} right={view.question!.right} />
           </DialCard>
           <p class="answer-line">
-            正解は <b class="display print">{fmt(result.target, sc.unit)}</b>
+            正解は <b class="display print"><Shown scale={sc} v={result.target} /></b>
             {me.answer && (
-              <span class="answer-mine">（あなたの回答: {fmt(me.answer.v, sc.unit)}）</span>
+              <span class="answer-mine">（あなたの回答: <Shown scale={sc} v={me.answer.v} />）</span>
             )}
           </p>
           {result.comment && <p class="small">{result.comment}</p>}
@@ -198,7 +204,7 @@ function Answering({ view, send }: { view: View; send: Send }) {
     clearTimeout(moveTimer.current);
     moveTimer.current = setTimeout(() => send({ t: "move", v }), 250);
   };
-  const shown = fmt(pos, sc.unit);
+  const shown = fmtOn(sc, pos);
   // ◀ ▶ move one step toward that end of the dial.
   const nudge = (d: number) => {
     const v = snap(sc, posRef.current + d * sc.step * Math.sign(sc.max - sc.min));
@@ -224,7 +230,9 @@ function Answering({ view, send }: { view: View; send: Send }) {
         <button onClick={() => nudge(-1)} disabled={locked} aria-label="左へ">
           <Chevron d="M15 5 L8 12 L15 19" />
         </button>
-        <span class={`nudge-value${shown.length > 7 ? " longer" : shown.length > 4 ? " long" : ""}`}>{shown}</span>
+        <span class={`nudge-value${sc.band ? " nudge-color" : shown.length > 7 ? " longer" : shown.length > 4 ? " long" : ""}`}>
+          <Shown scale={sc} v={pos} />
+        </span>
         <button onClick={() => nudge(1)} disabled={locked} aria-label="右へ">
           <Chevron d="M9 5 L16 12 L9 19" />
         </button>

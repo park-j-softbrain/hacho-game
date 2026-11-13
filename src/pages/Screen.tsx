@@ -1,6 +1,7 @@
 import { useState } from "preact/hooks";
+import { endLabel } from "../../shared/color";
 import type { Board, View } from "../../shared/game";
-import { Dial, Ends, fmt } from "../Dial";
+import { Dial, Ends, Shown, fmt, fmtOn } from "../Dial";
 import { FINALE_SOUNDS, Finale } from "../Finale";
 import { ScoreBand } from "../ScoreBand";
 import { TableBand } from "../TableBand";
@@ -125,7 +126,7 @@ function Round({ view, stage }: { view: View; stage: Stage }) {
             target={stage === "pause" ? undefined : result?.target}
             sweep={stage === "sweep"}
             markers={markers}
-            label={`ダイヤル。${q.left}から${q.right}`}
+            label={`ダイヤル。${endLabel(q.left)}から${endLabel(q.right)}`}
           />
           <Ends left={q.left} right={q.right} />
         </div>
@@ -142,7 +143,7 @@ function Round({ view, stage }: { view: View; stage: Stage }) {
         {view.phase !== "open" && !intro && view.average != null && (
           <div class="average-pill">
             <span>みんなの平均</span>
-            <b class="display">{fmt(view.average, view.question!.scale.unit)}</b>
+            <b class="display"><Shown scale={view.question!.scale} v={view.average} /></b>
           </div>
         )}
       </aside>
@@ -186,7 +187,14 @@ function Result({ view }: { view: View }) {
     <>
       <div class="card card-dots side-card target-card">
         <span class="chip chip-pink">正解</span>
-        <p class="screen-target display">{fmt(result.target, view.question!.scale.unit)}</p>
+        {view.question!.scale.band ? (
+          <p class="screen-target screen-target-color display">
+            <span class="color-chip color-chip-big" style={{ background: fmtOn(view.question!.scale, result.target) }} aria-hidden="true" />
+            {fmtOn(view.question!.scale, result.target)}
+          </p>
+        ) : (
+          <p class="screen-target display">{fmt(result.target, view.question!.scale.unit)}</p>
+        )}
         {result.comment && <p class="screen-comment">{result.comment}</p>}
       </div>
       <div class="card winners">

@@ -1,4 +1,5 @@
 import { useId, useRef } from "preact/hooks";
+import { bandColor, endLabel } from "../shared/color";
 import { type Scale, formatValue, fractionOf, snap } from "../shared/game";
 
 // A half-circle dial from the question's left end to its right end (0–100 when
@@ -23,6 +24,23 @@ const TRACK = (() => {
   const [jx, jy] = at(0, RI);
   return `M${ox},${oy} A${R},${R} 0 0 1 ${ex},${ey} L${ix},${iy} A${RI},${RI} 0 0 0 ${jx},${jy} Z`;
 })();
+
+// A colour question's track: one wedge per position, each a hair wider so no seams show.
+function bandWedges(band: string[]) {
+  const n = band.length - 1;
+  return band.slice(0, n).map((_, i) => {
+    const [a, b] = at((i / n) * 100, R);
+    const [c, d] = at(Math.min(100, ((i + 1.2) / n) * 100), R);
+    const [e, f] = at(Math.min(100, ((i + 1.2) / n) * 100), RI);
+    const [g, h] = at((i / n) * 100, RI);
+    return (
+      <path
+        d={`M${a},${b} A${R},${R} 0 0 1 ${c},${d} L${e},${f} A${RI},${RI} 0 0 0 ${g},${h} Z`}
+        fill={bandColor(band, ((i + 0.5) / n) * 100)}
+      />
+    );
+  });
+}
 
 const TICKS = (() => {
   let major = "";
@@ -97,7 +115,7 @@ export function Dial({ scale = PLAIN, value, target, markers, onChange, onCommit
       class={`dial${interactive ? " dial-live" : ""}`}
       viewBox="-10 -10 220 120"
       role="img"
-      aria-label={label ?? (value != null ? `ダイヤル。針は${formatValue(value, scale.unit)}の位置` : "ダイヤル")}
+      aria-label={label ?? (value != null ? `ダイヤル。針は${fmtOn(scale, value)}の位置` : "ダイヤル")}
       onPointerDown={down}
       onPointerMove={move}
       onPointerUp={up}
@@ -108,13 +126,13 @@ export function Dial({ scale = PLAIN, value, target, markers, onChange, onCommit
           <circle class="ink-blue" cx="1.7" cy="1.7" r="0.62" />
         </pattern>
       </defs>
-      <path d={TRACK} fill={`url(#${id}-track)`} />
+      {scale.band ? bandWedges(scale.band) : <path d={TRACK} fill={`url(#${id}-track)`} />}
       <path class="dial-outline" d={TRACK} />
-      <path class="dial-tick" d={TICKS.major} />
-      <path class="dial-tick dial-tick-minor" d={TICKS.minor} />
+      {!scale.band && <path class="dial-tick" d={TICKS.major} />}
+      {!scale.band && <path class="dial-tick dial-tick-minor" d={TICKS.minor} />}
       {target != null && <TargetLine target={pos(target)} sweep={sweep} />}
       {markers && <Markers markers={markers.map((m) => ({ ...m, v: pos(m.v) }))} />}
-      {value != null && <Needle v={pos(value)} />}
+      {value != null && <Needle v={pos(value)} fill={scale.band && bandColor(scale.band, pos(value))} />}
       <circle class="dial-hub" cx={CX} cy={CY} r={8} />
       <circle class="dial-hub-dot" cx={CX} cy={CY} r={3} />
     </svg>
@@ -135,7 +153,7 @@ function TargetLine({ target, sweep }: { target: number; sweep?: boolean }) {
   );
 }
 
-function Needle({ v }: { v: number }) {
+function Needle({ v, fill }: { v: number; fill?: string }) {
   const [x, y] = at(v, R + 2);
   return (
     <g class="needle">
@@ -145,7 +163,11 @@ function Needle({ v }: { v: number }) {
       </g>
       <line class="needle-ink" x1={CX} y1={CY} x2={x} y2={y} />
       <circle class="needle-ink" cx={x} cy={y} r={6} />
-      <circle class="needle-dot" cx={x} cy={y} r={2.2} />
+      {fill ? (
+        <circle class="needle-swatch" cx={x} cy={y} r={4.6} fill={fill} />
+      ) : (
+        <circle class="needle-dot" cx={x} cy={y} r={2.2} />
+      )}
     </g>
   );
 }
@@ -199,12 +221,29 @@ function Markers({ markers }: { markers: Marker[] }) {
 export function Ends({ left, right }: { left: string; right: string }) {
   return (
     <div class="ends">
-      <span>{left}</span>
-      <span>{right}</span>
+      <span>{endLabel(left)}</span>
+      <span>{endLabel(right)}</span>
     </div>
   );
 }
 
 export function fmt(v: number, unit = ""): string {
   return formatValue(v, unit);
+}
+
+// A value on this question's dial as text: "3,776m", or the colour code on a colour dial.
+export function fmtOn(sc: Scale, v: number): string {
+  return sc.band ? bandColor(sc.band, 100 * fractionOf(sc, v)) : formatValue(v, sc.unit);
+}
+
+// The same, with a colour chip in front on a colour dial.
+export function Shown({ scale, v }: { scale: Scale; v: number }) {
+  const text = fmtOn(scale, v);
+  if (!scale.band) return <>{text}</>;
+  return (
+    <span class="shown-color">
+      <span class="color-chip" style={{ background: text }} aria-hidden="true" />
+      {text}
+    </span>
+  );
 }

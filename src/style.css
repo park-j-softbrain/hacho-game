@@ -818,6 +818,52 @@ circle.needle-ink {
   font-size: 1.7rem;
 }
 
+/* Colour questions: a chip of the colour in front of its code. */
+.shown-color {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  vertical-align: middle;
+}
+
+.color-chip {
+  display: inline-block;
+  width: 1.1em;
+  height: 1.1em;
+  border-radius: 50%;
+  border: 2px solid var(--mix);
+  flex: none;
+}
+
+.nudge-value.nudge-color {
+  font-size: 1.6rem;
+}
+
+.nudge-value.nudge-color .color-chip {
+  width: 1.7em;
+  height: 1.7em;
+}
+
+.needle-swatch {
+  stroke: var(--card);
+  stroke-width: 1.4;
+}
+
+p.screen-target.screen-target-color {
+  display: flex;
+  align-items: center;
+  gap: 0.25em;
+  font-size: 7vh;
+  text-shadow: none;
+}
+
+.color-chip.color-chip-big {
+  width: 1.4em;
+  height: 1.4em;
+  border-width: 0.08em;
+  box-shadow: 0.06em 0.05em 0 var(--pink);
+}
+
 .phone-round > button.primary {
   width: calc(100% - 5px);
   min-height: 62px;

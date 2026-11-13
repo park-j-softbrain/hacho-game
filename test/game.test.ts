@@ -17,6 +17,7 @@ import {
   type GameState,
 } from "../shared/game";
 import { parseQuestions, toTsv } from "../shared/questions";
+import { endLabel, parseColor } from "../shared/color";
 
 const Q = [
   { prompt: "森林の割合", left: "0%", right: "100%", target: 75.5, comment: "約3分の2" },
@@ -399,5 +400,47 @@ describe("finale", () => {
       [2, [2, 3]],
       [1, [1]],
     ]);
+  });
+});
+
+describe("colour questions", () => {
+  const row = "日の丸の赤は？\t明るい赤 #FF9A9A\t暗い赤 #4A0012\t#BC002D\t紅色\t60\t100\t";
+
+  it("reads colour codes in the ends and the answer, and places the answer by brightness", () => {
+    expect(parseColor("明るい赤 #ff9a9a")).toEqual({ hex: "#FF9A9A", label: "明るい赤" });
+    expect(parseColor("rgb(188, 0, 45)")).toEqual({ hex: "#BC002D", label: "" });
+    expect(parseColor("#B02")?.hex).toBe("#BB0022");
+    expect(endLabel("暗い赤 #4A0012")).toBe("暗い赤");
+    expect(endLabel("#4A0012")).toBe("#4A0012");
+    const r = parseQuestions(row);
+    if (!("questions" in r)) throw new Error(r.error);
+    const s = initialState(r.questions);
+    const q = s.questions[0];
+    expect(q.color).toBe("#BC002D");
+    expect(q.target).toBe(54);
+    const sc = scaleOf(q);
+    expect(sc.band).toHaveLength(101);
+    expect(sc.band![54]).toBe("#BC002D"); // the answer is exactly on the band
+    expect(pointsFor(q, 44)).toBe(10);
+    expect(toTsv(s.questions)).toContain("\t#BC002D\t");
+  });
+
+  it("refuses an answer colour outside the ends' brightness", () => {
+    const r = parseQuestions(row.replace("\t#BC002D\t", "\t#FFFFFF\t"));
+    expect(r).toEqual({ error: "1行目: 正解の色は左と右の間の明るさにしてください" });
+    expect(parseQuestions(row.replace("\t#BC002D\t", "\tあか\t"))).toEqual({
+      error: "1行目: 正解（4列目）を色コード（#BC002D など）か0〜100の数字で入れてください",
+    });
+  });
+
+  it("keeps the answer's position out of what the phones get before the reveal", () => {
+    const r = parseQuestions(row);
+    if (!("questions" in r)) throw new Error(r.error);
+    const s = initialState(r.questions);
+    s.tableCount = 2;
+    applyAdmin(s, { t: "open", id: s.questions[0].id }, 0);
+    const v = buildView(s, { role: "table", n: 1 }, new Set([1]), 0);
+    expect(JSON.stringify(v)).not.toContain('"target"');
+    expect(JSON.stringify(v)).not.toContain('"color"');
   });
 });
