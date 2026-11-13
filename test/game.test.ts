@@ -349,6 +349,21 @@ describe("editing questions", () => {
     expect(s.questions[0]).toEqual(live);
   });
 
+  it("moves a question up or down one place, but not during a round", () => {
+    const s = initialState([...Q, NEW]);
+    const ids = s.questions.map((q) => q.id);
+    expect(applyAdmin(s, { t: "moveQuestion", id: ids[2], by: -1 }, 0)).toBeUndefined();
+    expect(s.questions.map((q) => q.id)).toEqual([ids[0], ids[2], ids[1]]);
+    applyAdmin(s, { t: "moveQuestion", id: ids[0], by: -1 }, 0); // already first
+    applyAdmin(s, { t: "moveQuestion", id: ids[1], by: 1 }, 0); // already last
+    expect(s.questions.map((q) => q.id)).toEqual([ids[0], ids[2], ids[1]]);
+    expect(applyAdmin(s, { t: "moveQuestion", id: "nope", by: 1 }, 0)).toBeTruthy();
+
+    applyAdmin(s, { t: "start", qid: ids[0] }, 0);
+    expect(applyAdmin(s, { t: "moveQuestion", id: ids[2], by: 1 }, 1)).toMatch(/出題中/);
+    expect(s.questions.map((q) => q.id)).toEqual([ids[0], ids[2], ids[1]]);
+  });
+
   it("scores a revealed question again when its answer changes", () => {
     const s = started();
     applyTable(s, 1, { t: "submit", v: 75 }, 1000);

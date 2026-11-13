@@ -288,6 +288,7 @@ export type AdminMsg =
   | { t: "addQuestion"; question: QuestionInput }
   | { t: "updateQuestion"; id: string; question: QuestionInput }
   | { t: "deleteQuestion"; id: string }
+  | { t: "moveQuestion"; id: string; by: number } // by -1: one place up, 1: one place down
   | { t: "reset" };
 
 const CLOSED = "回答の受付は終了しました";
@@ -405,6 +406,17 @@ export function applyAdmin(s: GameState, m: AdminMsg, now: number): string | und
       // A question that was already revealed is scored again against its new answer.
       const r = s.results[old.id];
       if (r) r.points = scoreRound(s, old, r.answers);
+      return;
+    }
+    case "moveQuestion": {
+      const i = s.questions.findIndex((q) => q.id === m.id);
+      if (i < 0) return "問題が見つかりません";
+      // The phones show the open question's number, so the order holds still during a round.
+      if (s.phase === "open" || s.phase === "closed") return "出題中は並べ替えられません";
+      const j = i + Math.sign(Number(m.by) || 0);
+      if (j < 0 || j >= s.questions.length || j === i) return;
+      const [q] = s.questions.splice(i, 1);
+      s.questions.splice(j, 0, q);
       return;
     }
     case "deleteQuestion": {

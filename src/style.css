@@ -2067,6 +2067,20 @@ button.round-fill {
   justify-content: flex-end;
 }
 
+.question-edit button {
+  white-space: nowrap;
+}
+
+/* ↑ ↓ sit on the left; 編集 and 削除 stay on the right. */
+.question-edit .question-move {
+  font-size: 1.2rem;
+  text-decoration: none;
+}
+
+.question-move-last {
+  margin-right: auto;
+}
+
 .question-edit button:disabled {
   opacity: 0.4;
   cursor: not-allowed;

@@ -500,6 +500,24 @@ function Questions({ view, send }: { view: View; send: Send }) {
               </button>
               <div class="question-edit">
                 <button
+                  class="link question-move"
+                  disabled={busy || i === 0}
+                  aria-label={`Q${i + 1}を上へ`}
+                  title="上へ"
+                  onClick={() => send({ t: "moveQuestion", id: q.id, by: -1 })}
+                >
+                  ↑
+                </button>
+                <button
+                  class="link question-move question-move-last"
+                  disabled={busy || i === admin.questions.length - 1}
+                  aria-label={`Q${i + 1}を下へ`}
+                  title="下へ"
+                  onClick={() => send({ t: "moveQuestion", id: q.id, by: 1 })}
+                >
+                  ↓
+                </button>
+                <button
                   class="link"
                   disabled={locked}
                   onClick={() => setEditing(q.id)}
