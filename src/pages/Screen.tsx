@@ -1,6 +1,6 @@
 import { useState } from "preact/hooks";
 import { endLabel } from "../../shared/color";
-import type { Board, View } from "../../shared/game";
+import { type Board, type Extreme, GROUP_NAMES, type View } from "../../shared/game";
 import { Dial, Ends, Shown, fmt, fmtOn } from "../Dial";
 import { FINALE_SOUNDS, Finale } from "../Finale";
 import { ScoreBand } from "../ScoreBand";
@@ -18,13 +18,15 @@ export function ScreenPage() {
   const [mode, setMode] = useScoreView();
   const sound = useSound(SCREEN_SOUNDS);
   const { stage, before, live } = useReveal(view);
-  useScreenSounds(view, stage, live, mode === "tables");
+  useScreenSounds(view, stage, live, mode === "tables" && !view?.secret);
   if (!view) return <Center>接続中…</Center>;
 
   const round =
     (view.phase === "open" || view.phase === "closed" || view.phase === "reveal") && !!view.question;
   // the running totals; the ranking screen has its own full chart
-  const totals = view.phase !== "scores" && view.phase !== "finale" && (view.played > 0 || (mode === "tables" && round));
+  // While the totals are hidden until the finale, neither band shows.
+  const totals =
+    !view.secret && view.phase !== "scores" && view.phase !== "finale" && (view.played > 0 || (mode === "tables" && round));
   const band = totals && mode === "band";
   const tables = totals && mode === "tables";
   // Until the reveal's results show, the bands keep the totals from before it.
@@ -48,9 +50,11 @@ export function ScreenPage() {
           {view.phase !== "lobby" && (
             <span class="chip chip-phase">
               {view.phase === "scores"
-                ? view.final
-                  ? "最終結果"
-                  : "現在の順位"
+                ? view.secret
+                  ? "途中経過"
+                  : view.final
+                    ? "最終結果"
+                    : "現在の順位"
                 : PHASE_LABEL[view.phase]}
             </span>
           )}
@@ -59,13 +63,14 @@ export function ScreenPage() {
       {view.phase === "lobby" && <Lobby view={view} />}
       {round && <Round view={view} stage={stage} />}
       {view.phase === "finale" && view.finale && <Finale view={view} />}
+      {view.phase === "scores" && view.secret && <GroupBoard view={view} />}
       {view.phase === "scores" && view.board && (
         <ScoreChart view={view} board={view.board} />
       )}
       {band && <ScoreBand tables={shown.tables} />}
       {tables && <TableBand view={shown} />}
       <FullscreenButton />
-      <ViewSwitch mode={mode} onChange={setMode} />
+      {!view.secret && <ViewSwitch mode={mode} onChange={setMode} />}
       {!sound.ready && !sound.muted && <SoundHint />}
     </div>
   );
@@ -171,18 +176,8 @@ function Answering({ view }: { view: View }) {
 function Result({ view }: { view: View }) {
   const result = view.result!;
   const names = new Map(view.tables.map((t) => [t.n, t.name]));
-  // The closest three places (ties share one), with each table's points.
-  const places = [1, 2, 3]
-    .map((rank) => ({
-      rank,
-      rows: Object.entries(result.ranks)
-        .filter(([, r]) => r === rank)
-        .map(([n]) => ({
-          name: names.get(Number(n)) ?? `テーブル${n}`,
-          miss: result.points[Number(n)] ?? 0,
-        })),
-    }))
-    .filter((p) => p.rows.length > 0);
+  // One table, or every table on the same miss: the closest is also the farthest, so show it once.
+  const worst = result.worst && result.best && result.worst.miss !== result.best.miss ? result.worst : null;
   return (
     <>
       <div class="card card-dots side-card target-card">
@@ -197,30 +192,64 @@ function Result({ view }: { view: View }) {
         )}
         {result.comment && <p class="screen-comment">{result.comment}</p>}
       </div>
-      <div class="card winners">
-        {places.map((p) => (
-          <div class="winners-row">
-            <span class={`points-badge points-badge-${5 - p.rank}`}>
-              <b>{p.rank}</b>位
-            </span>
-            <span class="winners-names">
-              {p.rows.map((row, i) => (
-                <>
-                  {i > 0 && "・"}
-                  <span class="nowrap">
-                    {row.name}（{fmt(row.miss)}）
-                  </span>
-                </>
-              ))}
-            </span>
-          </div>
-        ))}
-        {places.length === 0 && (
+      <div class="card winners extremes">
+        {result.best ? (
+          <>
+            <Extremity label="いちばん近い" ex={result.best} names={names} best />
+            {worst && <Extremity label="おしかった賞" ex={worst} names={names} />}
+          </>
+        ) : (
           <p class="screen-sub">回答したチームはありませんでした</p>
         )}
-        <p class="small">（）は今回の点数。ズレが少ないほど小さく、少ないほど上位</p>
       </div>
     </>
+  );
+}
+
+// One end of this question's results: the table(s) and their miss.
+function Extremity({ label, ex, names, best }: { label: string; ex: Extreme; names: Map<number, string>; best?: boolean }) {
+  const who = ex.ns.length > 3 ? `${ex.ns.length}チーム` : ex.ns.map((n) => names.get(n) ?? `テーブル${n}`).join("・");
+  return (
+    <div class={`extreme${best ? " extreme-best" : ""}`}>
+      <span class="extreme-label">{label}</span>
+      <span class="extreme-names">{who}</span>
+      <span class="extreme-miss">
+        ズレ <b class="display">{fmt(ex.miss)}</b>点
+      </span>
+    </div>
+  );
+}
+
+// While the totals are hidden: the tables in three groups by total, by table
+// number inside each group, so nobody can read off who is 1st.
+function GroupBoard({ view }: { view: View }) {
+  const many = view.tables.length > 30;
+  return (
+    <div class="scoreboard groupboard">
+      <div class="scoreboard-head">
+        <h2 class="display print">いまのグループ</h2>
+        <div class="legend">
+          <span>合計のズレが近いチームどうしで分けています（グループの中はテーブル番号順）。順位は最後の結果発表で</span>
+        </div>
+      </div>
+      {GROUP_NAMES.map((name, g) => {
+        const tables = view.tables.filter((t) => t.group === g);
+        if (tables.length === 0) return null;
+        return (
+          <div class={`group-row group-${g}${many ? " many" : ""}`}>
+            <span class="group-name display">{name}</span>
+            <div class="group-chips">
+              {tables.map((t) => (
+                <span class="table-chip on">
+                  <span class="table-chip-no">{t.n}</span>
+                  <span class="table-chip-name">{t.name}</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

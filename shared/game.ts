@@ -145,6 +145,9 @@ export type GameState = {
   deadline: number;
   answers: Record<number, Answer>; // current round, by table
   shown: number; // finale: how many podium places are out (0 = the "全問終了" screen)
+  // Keep the totals and the ranking off the projector and the phones until the
+  // finale has named 1位. Missing (older saved state) counts as on.
+  hideTotals?: boolean;
   version?: number; // 2: targets and answers are in each question's own units (before: 0–100)
 };
 
@@ -255,6 +258,45 @@ export function podium(s: GameState): Place[] {
     .filter((p) => p.tables.length > 0);
 }
 
+// While the totals are hidden, the tables are shown in three groups by total
+// instead of by rank, so everyone knows roughly where they stand but not who is 1st.
+export const GROUP_NAMES = ["首位争い", "追い上げ", "巻き返し"] as const;
+
+// About a third of the tables in each group, lowest total first, and at least three
+// at the top so the leader can't be read off it. Tied tables go to the higher group.
+export function groupsOf(rows: { n: number; score: number }[]): Record<number, number> {
+  const sorted = [...rows].sort((a, b) => a.score - b.score || a.n - b.n);
+  const count = sorted.length;
+  const groups: Record<number, number> = {};
+  if (count === 0) return groups;
+  const top = Math.max(Math.min(3, count), Math.ceil(count / 3));
+  const bottom = Math.min(Math.floor(count / 3), count - top);
+  const topScore = sorted[top - 1].score;
+  const lastMiddle = sorted[count - bottom - 1].score;
+  for (const r of sorted) groups[r.n] = r.score <= topScore ? 0 : bottom > 0 && r.score > lastMiddle ? 2 : 1;
+  return groups;
+}
+
+// The totals stay hidden until every question is revealed and the finale has shown every place.
+export function totalsHidden(s: GameState): boolean {
+  if (s.hideTotals === false) return false;
+  const final = s.questions.length > 0 && s.questions.every((x) => s.results[x.id]);
+  const places = podium(s).length;
+  return !(final && places > 0 && (s.shown ?? 0) >= places);
+}
+
+// This question's closest and farthest tables among those that answered (ties share).
+export type Extreme = { miss: number; ns: number[] };
+
+export function extremes(r: RoundResult): { best: Extreme; worst: Extreme } | null {
+  const rows = Object.keys(r.answers).map((k) => ({ n: Number(k), p: r.points[Number(k)] ?? 0 }));
+  if (rows.length === 0) return null;
+  const lo = Math.min(...rows.map((x) => x.p));
+  const hi = Math.max(...rows.map((x) => x.p));
+  const pick = (p: number) => ({ miss: p, ns: rows.filter((x) => x.p === p).map((x) => x.n).sort((a, b) => a - b) });
+  return { best: pick(lo), worst: pick(hi) };
+}
+
 export function currentQuestion(s: GameState): Question | null {
   return s.questions.find((q) => q.id === s.qid) ?? null;
 }
@@ -281,7 +323,7 @@ export type AdminMsg =
   | { t: "finale" } // the "全問終了" screen; phones wait for the results
   | { t: "finaleNext" } // the next podium place
   | { t: "addTime"; seconds: number }
-  | { t: "settings"; title?: string; tableCount?: number }
+  | { t: "settings"; title?: string; tableCount?: number; hideTotals?: boolean }
   | { t: "rename"; n: number; name: string }
   | { t: "adjust"; n: number; delta: number }
   | { t: "questions"; questions: QuestionInput[] }
@@ -370,6 +412,7 @@ export function applyAdmin(s: GameState, m: AdminMsg, now: number): string | und
     case "settings":
       if (m.title !== undefined) s.title = clean(m.title, 40) || s.title;
       if (m.tableCount !== undefined) s.tableCount = clampInt(m.tableCount, 1, MAX_TABLES);
+      if (m.hideTotals !== undefined) s.hideTotals = !!m.hideTotals;
       return;
     case "rename":
       setName(s, m.n, m.name);
@@ -577,8 +620,9 @@ export type TableRow = {
   name: string;
   online: boolean;
   answered: boolean; // pressed 回答 this round
-  score: number;
-  rank: number;
+  score: number; // 0 while the totals are hidden (admin excepted)
+  rank: number; // 0 while the totals are hidden (admin excepted)
+  group?: number; // index into GROUP_NAMES; sent while the totals are hidden, after the first reveal
 };
 
 export type View = {
@@ -588,6 +632,7 @@ export type View = {
   phase: Phase;
   final: boolean; // every question has been revealed
   played: number; // questions revealed so far; scores mean nothing before the first
+  secret: boolean; // the totals are hidden from the projector and the phones
   qid: string | null;
   qNo: number;
   qCount: number;
@@ -599,9 +644,26 @@ export type View = {
   // all tables' needles: admin always, projector once the round is closed
   answers?: { n: number; v: number; submitted: boolean }[];
   average?: number | null;
-  // points = each table's score for this question (lower is better); ranks only cover tables that answered
-  result?: { target: number; comment?: string; points: Record<number, number>; ranks: Record<number, number> };
-  me?: { n: number; name: string; hasName: boolean; answer: Answer | null; score: number; rank: number };
+  // points = each table's score for this question (lower is better); ranks only cover tables that answered.
+  // While the totals are hidden, a phone gets only its own points and rank.
+  result?: {
+    target: number;
+    comment?: string;
+    points: Record<number, number>;
+    ranks: Record<number, number>;
+    best: Extreme | null; // closest
+    worst: Extreme | null; // farthest (おしかった賞)
+  };
+  me?: {
+    n: number;
+    name: string;
+    hasName: boolean;
+    answer: Answer | null;
+    score: number;
+    rank: number;
+    group?: number;
+    prevGroup?: number | null; // the group before the latest question; null after only one
+  };
   // the score graph, sent while the ranking is shown
   board?: Board;
   // the finale: places revealed so far (3位 first); the admin gets every place
@@ -609,6 +671,7 @@ export type View = {
   admin?: {
     questions: (Question & { done: boolean })[];
     tableCount: number;
+    hideTotals: boolean;
     tokens: Record<number, string>;
   };
 };
@@ -651,13 +714,18 @@ export function buildView(s: GameState, viewer: Viewer, online: Set<number>, now
   const q = currentQuestion(s);
   const ranks = new Map(standings(s).map((r) => [r.n, r]));
   const roundOver = s.phase === "closed" || s.phase === "reveal";
+  const secret = totalsHidden(s);
+  const hide = secret && viewer.role !== "admin";
+  const played = playedOrder(s);
+  const groups = secret && played.length > 0 ? groupsOf([...ranks.values()]) : null;
   const view: View = {
     t: "state",
     now,
     title: s.title,
     phase: s.phase,
     final: s.questions.length > 0 && s.questions.every((x) => s.results[x.id]),
-    played: playedOrder(s).length,
+    played: played.length,
+    secret,
     qid: q?.id ?? null,
     qNo: q ? s.questions.indexOf(q) + 1 : 0,
     qCount: s.questions.length,
@@ -670,8 +738,9 @@ export function buildView(s: GameState, viewer: Viewer, online: Set<number>, now
       name: nameOf(s, n),
       online: online.has(n),
       answered: !!s.answers[n]?.submitted,
-      score: ranks.get(n)?.score ?? 0,
-      rank: ranks.get(n)?.rank ?? 0,
+      score: hide ? 0 : (ranks.get(n)?.score ?? 0),
+      rank: hide ? 0 : (ranks.get(n)?.rank ?? 0),
+      ...(groups ? { group: groups[n] } : {}),
     })),
   };
   if (viewer.role === "admin" || (viewer.role === "screen" && roundOver)) {
@@ -680,9 +749,17 @@ export function buildView(s: GameState, viewer: Viewer, online: Set<number>, now
   }
   if (s.phase === "reveal" && q) {
     const r = s.results[q.id];
-    view.result = { target: q.target, comment: q.comment, points: r?.points ?? {}, ranks: r ? roundRanks(r) : {} };
+    const ex = r ? extremes(r) : null;
+    let points = r?.points ?? {};
+    let roundRank = r ? roundRanks(r) : {};
+    if (hide && viewer.role === "table") {
+      const n = viewer.n;
+      points = n in points ? { [n]: points[n] } : {};
+      roundRank = n in roundRank ? { [n]: roundRank[n] } : {};
+    }
+    view.result = { target: q.target, comment: q.comment, points, ranks: roundRank, best: ex?.best ?? null, worst: ex?.worst ?? null };
   }
-  if (s.phase === "scores") view.board = buildBoard(s);
+  if (s.phase === "scores" && !hide) view.board = buildBoard(s);
   if (s.phase === "finale") {
     const places = podium(s);
     const shown = Math.min(s.shown ?? 0, places.length);
@@ -695,14 +772,24 @@ export function buildView(s: GameState, viewer: Viewer, online: Set<number>, now
       name: nameOf(s, n),
       hasName: n in s.names,
       answer: s.answers[n] ?? null,
-      score: scoreOf(s, n),
-      rank: ranks.get(n)?.rank ?? 0,
+      score: hide ? 0 : scoreOf(s, n),
+      rank: hide ? 0 : (ranks.get(n)?.rank ?? 0),
     };
+    if (groups) {
+      view.me.group = groups[n];
+      // the groups as they stood before the latest question
+      const last = s.results[played[played.length - 1]];
+      view.me.prevGroup =
+        played.length > 1
+          ? groupsOf([...ranks.values()].map((x) => ({ n: x.n, score: x.score - (last.points[x.n] ?? 0) })))[n]
+          : null;
+    }
   }
   if (viewer.role === "admin") {
     view.admin = {
       questions: s.questions.map((x) => ({ ...x, done: !!s.results[x.id] })),
       tableCount: s.tableCount,
+      hideTotals: s.hideTotals !== false,
       tokens: viewer.tokens,
     };
   }

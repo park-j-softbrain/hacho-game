@@ -1,6 +1,6 @@
 import type { ComponentChildren } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { type View, fractionOf, snap } from "../../shared/game";
+import { type Extreme, GROUP_NAMES, type View, fractionOf, snap } from "../../shared/game";
 import { Dial, Ends, Shown, fmt, fmtOn } from "../Dial";
 import { serverNow, useGame, useTick } from "../net";
 import { click, play, useSound } from "../sound";
@@ -31,9 +31,13 @@ export function TablePage({ n, k }: { n: number; k: string }) {
             <span class="phone-table">テーブル{me.n}</span>
           )}
         </div>
-        <span class="score-pill">
-          <b>{fmt(me.score)}</b>点
-        </span>
+        {view.secret ? (
+          me.group != null && <span class="score-pill">{GROUP_NAMES[me.group]}</span>
+        ) : (
+          <span class="score-pill">
+            <b>{fmt(me.score)}</b>点
+          </span>
+        )}
       </header>
       {canName && (!me.hasName || renaming) ? (
         <NameForm
@@ -135,15 +139,25 @@ function Body({
             )}
           </p>
           {result.comment && <p class="small">{result.comment}</p>}
-          <p class="total-pill">
-            合計 <b>{fmt(me.score)}</b>点・<b>{me.rank}</b>位
-          </p>
+          {me.answer && points != null && <Spread best={result.best} worst={result.worst} mine={points} />}
+          {view.secret ? (
+            me.group != null && (
+              <p class="total-pill">
+                いまのグループ <b>{GROUP_NAMES[me.group]}</b>
+              </p>
+            )
+          ) : (
+            <p class="total-pill">
+              合計 <b>{fmt(me.score)}</b>点・<b>{me.rank}</b>位
+            </p>
+          )}
         </div>
       );
     }
     case "finale":
       return <PhoneFinale view={view} />;
     case "scores":
+      if (view.secret) return <GroupNow view={view} onRename={onRename} />;
       return (
         <Center>
           <Burst label={view.final ? "最終結果" : "現在の順位"}>
@@ -265,6 +279,68 @@ function Answering({ view, send }: { view: View; send: Send }) {
         <p class="hint">時間切れのときは、針の位置がそのまま回答になります</p>
       )}
     </div>
+  );
+}
+
+// Where this table's miss sits between this question's closest and farthest tables.
+function Spread({ best, worst, mine }: { best: Extreme | null; worst: Extreme | null; mine: number }) {
+  if (!best || !worst) return null;
+  const width = worst.miss - best.miss;
+  const at = width > 0 ? Math.min(100, Math.max(0, ((mine - best.miss) / width) * 100)) : 0;
+  const top = mine <= best.miss;
+  return (
+    <div class="spread">
+      {width > 0 && (
+        <>
+          <div class="spread-bar" role="img" aria-label={`いちばん近いチームのズレ${fmt(best.miss)}点、あなた${fmt(mine)}点、おしかった賞${fmt(worst.miss)}点`}>
+            <i class="spread-mark spread-mine" style={{ left: `${at}%` }}>
+              <span>あなた</span>
+            </i>
+          </div>
+          <div class="spread-ends" aria-hidden="true">
+            <span>いちばん近い {fmt(best.miss)}点</span>
+            <span>おしかった賞 {fmt(worst.miss)}点</span>
+          </div>
+        </>
+      )}
+      <p class="spread-note">
+        {top
+          ? "今回いちばん近いチームです！"
+          : width > 0 && mine >= worst.miss
+            ? "今回のおしかった賞です。次で取り返しましょう！"
+            : `いちばん近いチームまで あと${fmt(mine - best.miss)}点`}
+      </p>
+    </div>
+  );
+}
+
+// The 途中経過 screen while the totals are hidden: this table's group and whether it moved.
+function GroupNow({ view, onRename }: { view: View; onRename: () => void }) {
+  const me = view.me!;
+  const g = me.group;
+  const prev = me.prevGroup;
+  const moved =
+    g == null || prev == null
+      ? null
+      : g < prev
+        ? `${GROUP_NAMES[prev]} → ${GROUP_NAMES[g]} に上がりました！`
+        : g > prev
+          ? `${GROUP_NAMES[prev]} → ${GROUP_NAMES[g]} に下がりました`
+          : "前の問題と同じグループです";
+  const same = g == null ? 0 : view.tables.filter((t) => t.group === g).length;
+  return (
+    <Center>
+      <Burst label="いまのグループ">
+        <span class="display group-burst">{g == null ? "―" : GROUP_NAMES[g]}</span>
+      </Burst>
+      {same > 1 && <p class="total-pill">{same}チームがこのグループ</p>}
+      {moved && <p class="big">{moved}</p>}
+      <p class="small">合計のズレが近いチームどうしで分けています。順位は最後の結果発表で分かります</p>
+      <p>スクリーンをご覧ください</p>
+      <button class="link" onClick={onRename}>
+        チーム名を変更
+      </button>
+    </Center>
   );
 }
 

@@ -5,6 +5,7 @@ import {
   buildView,
   closeIfExpired,
   GRACE_MS,
+  groupsOf,
   initialState,
   migrate,
   missPenalty,
@@ -281,6 +282,7 @@ describe("score graph", () => {
     applyTable(s, 2, { t: "submit", v: 40 }, 4000); // Q2: table 2 is spot on
     applyAdmin(s, { t: "reveal" }, 5000);
     s.adjust[3] = 1;
+    s.hideTotals = false;
     applyAdmin(s, { t: "scores" }, 6000);
 
     const view = buildView(s, { role: "screen" }, new Set(), 6000);
@@ -457,5 +459,76 @@ describe("colour questions", () => {
     const v = buildView(s, { role: "table", n: 1 }, new Set([1]), 0);
     expect(JSON.stringify(v)).not.toContain('"target"');
     expect(JSON.stringify(v)).not.toContain('"color"');
+  });
+});
+
+describe("hidden totals", () => {
+  const rows = (scores: number[]) => scores.map((score, i) => ({ n: i + 1, score }));
+
+  it("splits the tables into thirds, at least three at the top, ties going to the higher group", () => {
+    expect(Object.values(groupsOf(rows([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])))).toEqual([0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2]);
+    expect(Object.values(groupsOf(rows([1, 2, 3, 4])))).toEqual([0, 0, 0, 2]);
+    expect(Object.values(groupsOf(rows([1, 2])))).toEqual([0, 0]);
+    expect(Object.values(groupsOf(rows([1, 2, 3, 3, 5, 6])))).toEqual([0, 0, 0, 0, 2, 2]);
+  });
+
+  it("shows players the closest and farthest tables and the groups, but no totals or ranks", () => {
+    const s = started();
+    s.tableCount = 4;
+    applyTable(s, 1, { t: "submit", v: 75 }, 1000); // misses by 0.5
+    applyTable(s, 2, { t: "submit", v: 70 }, 1000); // by 5.5
+    applyTable(s, 3, { t: "submit", v: 50 }, 1000); // by 25.5; table 4 didn't answer
+    applyAdmin(s, { t: "reveal" }, 2000);
+
+    const screen = buildView(s, { role: "screen" }, new Set(), 2000);
+    expect(screen.secret).toBe(true);
+    expect(screen.tables.map((t) => [t.score, t.rank, t.group])).toEqual([[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 2]]);
+    expect(screen.result!.best).toEqual({ miss: 0.5, ns: [1] });
+    expect(screen.result!.worst).toEqual({ miss: 25.5, ns: [3] }); // only tables that answered
+
+    const phone = buildView(s, { role: "table", n: 2 }, new Set(), 2000);
+    expect(phone.result!.points).toEqual({ 2: 5.5 });
+    expect(phone.result!.ranks).toEqual({ 2: 2 });
+    expect(phone.me).toMatchObject({ score: 0, rank: 0, group: 0, prevGroup: null });
+
+    const admin = buildView(s, { role: "admin", tokens: {} }, new Set(), 2000);
+    expect(admin.tables.map((t) => t.score)).toEqual([0.5, 5.5, 25.5, 75.5]);
+
+    applyAdmin(s, { t: "scores" }, 3000);
+    expect(buildView(s, { role: "screen" }, new Set(), 3000).board).toBeUndefined();
+    expect(buildView(s, { role: "admin", tokens: {} }, new Set(), 3000).board).toBeDefined();
+  });
+
+  it("tells a phone which group it was in before the latest question", () => {
+    const s = started();
+    s.tableCount = 4;
+    for (const [n, v] of [[1, 75], [2, 74], [3, 73], [4, 60]]) applyTable(s, n, { t: "submit", v }, 1000);
+    applyAdmin(s, { t: "reveal" }, 2000); // table 4 is last, 15.5 behind
+    applyAdmin(s, { t: "start", qid: s.questions[1].id }, 3000);
+    for (const [n, v] of [[1, 100], [2, 40], [3, 40], [4, 40]]) applyTable(s, n, { t: "submit", v }, 4000);
+    applyAdmin(s, { t: "reveal" }, 5000); // table 1 misses by 60 and drops to the bottom
+    expect(buildView(s, { role: "table", n: 1 }, new Set(), 5000).me).toMatchObject({ group: 2, prevGroup: 0 });
+    expect(buildView(s, { role: "table", n: 4 }, new Set(), 5000).me).toMatchObject({ group: 0, prevGroup: 2 });
+  });
+
+  it("shows the totals once the finale has named every place, or when the setting is off", () => {
+    const s = started();
+    applyTable(s, 1, { t: "submit", v: 75 }, 1000);
+    applyAdmin(s, { t: "reveal" }, 2000);
+    applyAdmin(s, { t: "start", qid: s.questions[1].id }, 3000);
+    applyAdmin(s, { t: "reveal" }, 4000);
+    applyAdmin(s, { t: "finale" }, 5000);
+    for (let i = 0; i < podium(s).length - 1; i++) applyAdmin(s, { t: "finaleNext" }, 5000);
+    expect(buildView(s, { role: "screen" }, new Set(), 5000).secret).toBe(true); // 1位 not out yet
+    applyAdmin(s, { t: "finaleNext" }, 5000);
+    const after = buildView(s, { role: "table", n: 1 }, new Set(), 5000);
+    expect(after.secret).toBe(false);
+    expect(after.me).toMatchObject({ rank: 1 });
+
+    const t = started();
+    applyAdmin(t, { t: "settings", hideTotals: false }, 0);
+    applyTable(t, 1, { t: "submit", v: 75 }, 1000);
+    applyAdmin(t, { t: "reveal" }, 2000);
+    expect(buildView(t, { role: "screen" }, new Set(), 2000).tables[0]).toMatchObject({ score: 0.5, rank: 1 });
   });
 });

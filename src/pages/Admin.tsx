@@ -195,7 +195,7 @@ function Controls({ view, send }: { view: View; send: Send }) {
             class={next ? "secondary" : "primary"}
             onClick={() => send({ t: "scores" })}
           >
-            スコアを表示
+            {view.secret ? "途中経過を表示" : "スコアを表示"}
           </button>
         )}
         {!open && view.phase !== "closed" && view.phase !== "finale" && next && (
@@ -392,7 +392,7 @@ function Scores({ view, send }: { view: View; send: Send }) {
   const rows = [...view.tables].sort((a, b) => a.rank - b.rank || a.n - b.n);
   return (
     <section class="panel admin-scores">
-      <h2>スコア<span class="answers-target">ズレの合計。少ないほど上位</span></h2>
+      <h2>スコア<span class="answers-target">ズレの合計。少ないほど上位{view.secret && "（スクリーンとスマホには非表示）"}</span></h2>
       <ol class="score-list">
         {rows.map((t) => (
           <li>
@@ -734,6 +734,17 @@ function Settings({ view, send }: { view: View; send: Send }) {
           保存
         </button>
       </form>
+      <label class="check">
+        <input
+          type="checkbox"
+          checked={admin.hideTotals}
+          onChange={(e) => send({ t: "settings", hideTotals: e.currentTarget.checked })}
+        />
+        合計と順位を最後の結果発表まで隠す
+      </label>
+      <p class="muted small">
+        オンのあいだ、スクリーンとスマホには毎問の「いちばん近い」「おしかった賞」と、途中経過のグループだけを出します。この画面には合計がそのまま出ます。
+      </p>
     </section>
   );
 }

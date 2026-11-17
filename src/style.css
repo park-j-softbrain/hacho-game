@@ -2918,3 +2918,166 @@ button.round-fill {
   color: #c2185b;
   font-weight: 900;
 }
+
+/* ---- hidden totals: closest / おしかった賞, groups, spread ---- */
+
+.extremes {
+  gap: 2vh;
+}
+
+.extreme {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas: "label miss" "names names";
+  align-items: center;
+  gap: 0.6vh 1vw;
+  color: var(--mix);
+  font-weight: 900;
+}
+
+.extreme-label {
+  grid-area: label;
+  justify-self: start;
+  padding: 0.4vh 1.2vw;
+  border: 4px solid var(--blue);
+  border-radius: 999px;
+  background: var(--card);
+  font-size: 2.4vh;
+}
+
+.extreme-best .extreme-label {
+  background: var(--pink);
+}
+
+.extreme-names {
+  grid-area: names;
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 4.4vh;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.extreme-miss {
+  grid-area: miss;
+  justify-self: end;
+  font-size: 2.6vh;
+}
+
+.extreme-miss b {
+  font-size: 4vh;
+  margin: 0 0.2em;
+}
+
+.groupboard {
+  gap: 2.4vh;
+}
+
+.groupboard h2 {
+  white-space: nowrap;
+}
+
+.group-row {
+  display: grid;
+  grid-template-columns: 22vw minmax(0, 1fr);
+  align-items: center;
+  gap: 2vw;
+}
+
+.group-name {
+  font-size: 5.4vh;
+  line-height: 1.1;
+}
+
+.group-0 .group-name {
+  text-shadow: 0.06em 0.05em 0 var(--pink);
+}
+
+.group-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.4vh 1vw;
+  min-width: 0;
+}
+
+.group-chips .table-chip {
+  max-width: 24vw;
+  font-size: 2.8vh;
+}
+
+.group-row:not(.group-0) .table-chip.on {
+  background: var(--card);
+  color: var(--blue);
+}
+
+.group-row.many .table-chip {
+  font-size: 2vh;
+  padding: 0.8vh 0.9vw;
+}
+
+.group-burst {
+  font-size: 2.6rem;
+}
+
+.spread {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 4px;
+}
+
+.spread-bar {
+  position: relative;
+  height: 14px;
+  margin: 30px 10px 0;
+  border: 3px solid var(--blue);
+  border-radius: 999px;
+  background-image: var(--dots-pink);
+  background-size: 7px 7px;
+}
+
+.spread-mark {
+  position: absolute;
+  top: -11px;
+  width: 6px;
+  height: 30px;
+  margin-left: -3px;
+  border-radius: 3px;
+  background: var(--mix);
+}
+
+.spread-mark span {
+  position: absolute;
+  bottom: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-style: normal;
+  font-weight: 900;
+  font-size: 0.85rem;
+  color: var(--mix);
+}
+
+.spread-ends {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.spread-note {
+  margin: 2px 0 0;
+  text-align: center;
+  font-weight: 900;
+  color: var(--mix);
+}
+
+label.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-weight: 700;
+}
