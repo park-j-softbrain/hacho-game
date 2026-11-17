@@ -86,7 +86,7 @@ export class Game extends DurableObject<Env> {
     if (typeof att === "string") return refuse(client, server, att);
     this.ctx.acceptWebSocket(server, [att.role]);
     server.serializeAttachment(att);
-    await this.broadcast();
+    await this.presence(server);
     return new Response(null, { status: 101, webSocket: client });
   }
 
@@ -189,11 +189,11 @@ export class Game extends DurableObject<Env> {
     } catch {
       // already closed by the runtime
     }
-    await this.broadcast(undefined, ws);
+    await this.presence(undefined, ws);
   }
 
   async webSocketError(ws: WebSocket) {
-    await this.broadcast(undefined, ws);
+    await this.presence(undefined, ws);
   }
 
   async alarm() {
@@ -236,6 +236,26 @@ export class Game extends DurableObject<Env> {
       } catch {
         // socket went away mid-broadcast; its close handler will update the others
       }
+    }
+  }
+
+  // A page connected (fresh) or went away (gone). Everyone hears about it only
+  // when it changes which tables are online. Otherwise only the new page gets
+  // the state, and the revision stays the same: a projector behind a proxy that
+  // drops each WebSocket would otherwise look like a game that keeps changing,
+  // and its HTTPS fallback would never slow down.
+  private async presence(fresh?: WebSocket, gone?: WebSocket) {
+    const atts = this.ctx
+      .getWebSockets()
+      .filter((ws) => ws !== gone && ws.readyState === WebSocket.READY_STATE_OPEN)
+      .map((ws) => ws.deserializeAttachment() as Attachment);
+    const online = this.online(atts);
+    if (this.onlineKey(online) !== this.lastOnline) return this.broadcast(undefined, gone);
+    if (!fresh) return;
+    try {
+      fresh.send(JSON.stringify(await this.viewFor(fresh.deserializeAttachment() as Attachment, online)));
+    } catch {
+      // gone already; its close handler runs next
     }
   }
 

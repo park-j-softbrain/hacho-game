@@ -18,6 +18,13 @@ const FAST_MS = 1000;
 const SLOW_MS = 5000;
 const QUIET_MS = 10000;
 const QUIET_AFTER = 10 * 60_000;
+// A page left open with nothing happening (a projector PC over the weekend).
+const IDLE_MS = 30000;
+const IDLE_AFTER = 60 * 60_000;
+// While the fallback works, the WebSocket is tried again after this long,
+// doubling up to the maximum.
+const RETRY_MS = 30000;
+const RETRY_MAX_MS = 5 * 60_000;
 const BUSY_MS = 10000; // how long to wait when the server says to slow down
 
 // Keeps one WebSocket to the game open: reconnects with backoff, and checks the
@@ -67,12 +74,15 @@ export function useGame(query: string) {
     let pollTimer: ReturnType<typeof setTimeout> | undefined;
     let busyUntil = 0;
     let changedAt = Date.now();
-    const pollEvery = () =>
-      Date.now() - changedAt > QUIET_AFTER
-        ? QUIET_MS
-        : phase === "open" || query.startsWith("role=screen")
-          ? FAST_MS
-          : SLOW_MS;
+    const pollEvery = () => {
+      const quiet = Date.now() - changedAt;
+      if (quiet > IDLE_AFTER) return IDLE_MS;
+      if (quiet > QUIET_AFTER) return QUIET_MS;
+      return phase === "open" || query.startsWith("role=screen") ? FAST_MS : SLOW_MS;
+    };
+    let fallbackRetries = 0;
+    // A hidden page doesn't try the WebSocket again; wake() does when it's shown.
+    let deferred = false;
 
     const poll = async () => {
       clearTimeout(pollTimer);
@@ -132,6 +142,8 @@ export function useGame(query: string) {
     const open = () => {
       clearTimeout(retryTimer);
       if (stopped) return;
+      deferred = document.visibilityState === "hidden";
+      if (deferred) return;
       const socket = new WebSocket(url);
       ws = wsRef.current = socket;
       setStatus("connecting");
@@ -140,6 +152,7 @@ export function useGame(query: string) {
         opened = true;
         retries = 0;
         failedOpens = 0;
+        fallbackRetries = 0;
         lastMessage = Date.now();
         stopPolling(socket);
         setStatus("open");
@@ -156,7 +169,12 @@ export function useGame(query: string) {
         if (!polling) setStatus("closed");
         if (stopped) return;
         // while the fallback works, try the WebSocket again only now and then
-        const wait = e.code === 4029 ? BUSY_MS : polling ? 30000 : Math.min(5000, 500 * 2 ** retries++);
+        const wait =
+          e.code === 4029
+            ? BUSY_MS
+            : polling
+              ? Math.min(RETRY_MAX_MS, RETRY_MS * 2 ** fallbackRetries++)
+              : Math.min(5000, 500 * 2 ** retries++);
         retryTimer = setTimeout(open, wait);
       };
     };
@@ -178,7 +196,7 @@ export function useGame(query: string) {
     const wake = () => {
       if (document.visibilityState !== "visible" || stopped) return;
       if (polling) void poll();
-      if (!ws) return polling ? undefined : open();
+      if (!ws) return polling && !deferred ? undefined : open();
       const asked = Date.now();
       if (ws.readyState === WebSocket.OPEN) ws.send("ping");
       setTimeout(() => {
