@@ -6,6 +6,7 @@ import { FINALE_SOUNDS, Finale } from "../Finale";
 import { ScoreBand } from "../ScoreBand";
 import { TableBand } from "../TableBand";
 import { SoundHint, ViewSwitch, useScoreView } from "../ViewSwitch";
+import { useFitChildren, useFitText } from "../fit";
 import { useGame } from "../net";
 import { type Stage, useReveal, useScreenSounds } from "../reveal";
 import { useSound } from "../sound";
@@ -78,8 +79,9 @@ export function ScreenPage() {
 
 function Lobby({ view }: { view: View }) {
   const joined = view.tables.filter((t) => t.online).length;
+  const fit = useFitChildren<HTMLDivElement>(view.tables.map((t) => t.name).join("|"));
   return (
-    <div class="screen-lobby">
+    <div class="screen-lobby" ref={fit}>
       <p class="screen-lead display print">
         テーブルのQRコードをスマホで読み取って参加してください
       </p>
@@ -120,11 +122,13 @@ function Round({ view, stage }: { view: View; stage: Stage }) {
       : q.prompt.length > 14
         ? " prompt-long"
         : "";
+  const prompt = useFitText<HTMLHeadingElement>(q.prompt, "height");
+  const side = useFitChildren<HTMLElement>(`${view.phase}|${stage}|${view.qid}`);
   return (
     <div class="screen-round">
       <div class="screen-main">
         <span class="chip chip-small">お題</span>
-        <h2 class={`screen-prompt display print${long}`}>{q.prompt}</h2>
+        <h2 class={`screen-prompt display print${long}`} ref={prompt}>{q.prompt}</h2>
         <div class="dial-box">
           <Dial
             scale={q.scale}
@@ -136,7 +140,7 @@ function Round({ view, stage }: { view: View; stage: Stage }) {
           <Ends left={q.left} right={q.right} />
         </div>
       </div>
-      <aside class="screen-side">
+      <aside class="screen-side" ref={side}>
         {view.phase === "open" && <Answering view={view} />}
         {(view.phase === "closed" || (view.phase === "reveal" && intro)) && (
           <div class="card card-dots side-card">
@@ -148,11 +152,20 @@ function Round({ view, stage }: { view: View; stage: Stage }) {
         {view.phase !== "open" && !intro && view.average != null && (
           <div class="average-pill">
             <span>みんなの平均</span>
-            <b class="display"><Shown scale={view.question!.scale} v={view.average} /></b>
+            <Average view={view} />
           </div>
         )}
       </aside>
     </div>
+  );
+}
+
+function Average({ view }: { view: View }) {
+  const fit = useFitText<HTMLElement>(`${view.qid}|${view.average}`);
+  return (
+    <b class="display" ref={fit}>
+      <Shown scale={view.question!.scale} v={view.average!} />
+    </b>
   );
 }
 
@@ -178,17 +191,18 @@ function Result({ view }: { view: View }) {
   const names = new Map(view.tables.map((t) => [t.n, t.name]));
   // One table, or every table on the same miss: the closest is also the farthest, so show it once.
   const worst = result.worst && result.best && result.worst.miss !== result.best.miss ? result.worst : null;
+  const target = useFitText<HTMLParagraphElement>(`${view.qid}|${result.target}`);
   return (
     <>
       <div class="card card-dots side-card target-card">
         <span class="chip chip-pink">正解</span>
         {view.question!.scale.band ? (
-          <p class="screen-target screen-target-color display">
+          <p class="screen-target screen-target-color display" ref={target}>
             <span class="color-chip color-chip-big" style={{ background: fmtOn(view.question!.scale, result.target) }} aria-hidden="true" />
             {fmtOn(view.question!.scale, result.target)}
           </p>
         ) : (
-          <p class="screen-target display">{fmt(result.target, view.question!.scale.unit)}</p>
+          <p class="screen-target display" ref={target}>{fmt(result.target, view.question!.scale.unit)}</p>
         )}
         {result.comment && <p class="screen-comment">{result.comment}</p>}
       </div>
@@ -209,10 +223,11 @@ function Result({ view }: { view: View }) {
 // One end of this question's results: the table(s) and their miss.
 function Extremity({ label, ex, names, best }: { label: string; ex: Extreme; names: Map<number, string>; best?: boolean }) {
   const who = ex.ns.length > 3 ? `${ex.ns.length}チーム` : ex.ns.map((n) => names.get(n) ?? `テーブル${n}`).join("・");
+  const fit = useFitText<HTMLSpanElement>(who);
   return (
     <div class={`extreme${best ? " extreme-best" : ""}`}>
       <span class="extreme-label">{label}</span>
-      <span class="extreme-names">{who}</span>
+      <span class="extreme-names" ref={fit}>{who}</span>
       <span class="extreme-miss">
         ズレ <b class="display">{fmt(ex.miss)}</b>点
       </span>
@@ -224,8 +239,9 @@ function Extremity({ label, ex, names, best }: { label: string; ex: Extreme; nam
 // number inside each group, so nobody can read off who is 1st.
 function GroupBoard({ view }: { view: View }) {
   const many = view.tables.length > 30;
+  const fit = useFitChildren<HTMLDivElement>(view.tables.map((t) => `${t.group}${t.name}`).join("|"));
   return (
-    <div class="scoreboard groupboard">
+    <div class="scoreboard groupboard" ref={fit}>
       <div class="scoreboard-head">
         <h2 class="display print">いまのグループ</h2>
         <div class="legend">
@@ -262,9 +278,10 @@ function ScoreChart({ view, board }: { view: View; board: Board }) {
   const perColumn = Math.ceil(tables.length / columns);
   const qNos = board.qNos;
   const last = qNos.length - 1;
+  const fit = useFitChildren<HTMLDivElement>(`${view.final}|${qNos.join()}|${tables.map((t) => t.name).join("|")}`);
 
   return (
-    <div class="scoreboard">
+    <div class="scoreboard" ref={fit}>
       <div class="scoreboard-head">
         <h2 class="display print">
           {view.final ? "最終結果" : "合計のズレ"}
@@ -309,7 +326,7 @@ function ScoreChart({ view, board }: { view: View; board: Board }) {
                     <span class="chart-name">{t.name}</span>
                     <span class="pts-row">
                       {pts.map((p, i) => (
-                        <span class={`pts${i === last ? " pts-last" : ""}`}>{fmt(p)}</span>
+                        <Pts v={p} last={i === last} />
                       ))}
                     </span>
                     <span class="chart-total display">
@@ -349,5 +366,15 @@ function FullscreenButton() {
     >
       全画面
     </button>
+  );
+}
+
+// One question's miss in the score chart, shrunk to its cell when the number is long.
+function Pts({ v, last }: { v: number; last: boolean }) {
+  const fit = useFitText<HTMLSpanElement>(v);
+  return (
+    <span class={`pts${last ? " pts-last" : ""}`} ref={fit}>
+      {fmt(v)}
+    </span>
   );
 }

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { Place, View } from "../shared/game";
 import { fmt } from "./Dial";
+import { useFitText } from "./fit";
 import { play } from "./sound";
 
 // The projector's final results. The admin reveals one podium place per press:
@@ -85,7 +86,7 @@ export function Finale({ view }: { view: View }) {
                   <div class="podium-team">
                     {rank === 1 && <Crown />}
                     <span class="podium-no">{t.n}</span>
-                    <span class="podium-name">{t.name}</span>
+                    <PodiumName name={t.name} />
                     <span class="podium-pts">合計のズレ {fmt(t.score)}点</span>
                   </div>
                 ))}
@@ -100,6 +101,16 @@ export function Finale({ view }: { view: View }) {
       </div>
       {champion && <Confetti />}
     </div>
+  );
+}
+
+// One line, shrunk to the width of its step so a long name can't reach the next one.
+function PodiumName({ name }: { name: string }) {
+  const fit = useFitText<HTMLSpanElement>(name);
+  return (
+    <span class="podium-name" ref={fit}>
+      {name}
+    </span>
   );
 }
 

@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "deploy": "npm run build && wrangler deploy",
     "typecheck": "tsc -b",
-    "test": "vitest run"
+    "test": "vitest run",
+    "check:screen": "node scripts/check-screen.mjs"
   },
   "dependencies": {
     "preact": "^11.1.0",

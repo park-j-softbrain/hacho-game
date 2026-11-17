@@ -33,6 +33,7 @@ npm install
 npm run dev          # http://localhost:5173  (admin password: "dev", from .dev.vars)
 npm test             # game-rule tests
 npm run typecheck
+npm run check:screen # projector layout at 8 window sizes (resets the local game; needs dev running and Chrome)
 ```
 
 `npm run dev` also prints a `Network:` URL. Open the admin page and the QR page
@@ -88,6 +89,12 @@ The design is a two-ink risograph print: warm paper, pink and blue inks that ble
 purple, and dot-pattern shading. The colours are the variables at the top of
 `src/style.css`. The fonts (Dela Gothic One, Zen Maru Gothic) come from Google Fonts
 and load without blocking the page, so if Google is slow or blocked the system fonts are used.
+
+The projector lays out on a 16:9 stage scaled to the window, so every window shape shows
+the same layout. Text whose length depends on the questions or team names (the answer,
+the prompt, names, numbers) shrinks to fit its box (`src/fit.ts`) instead of pushing the
+layout apart. `npm run check:screen` drives every phase with long content and reports
+anything that leaves the stage or overlaps.
 
 ## Layout
 
