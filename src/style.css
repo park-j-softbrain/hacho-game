@@ -909,6 +909,10 @@ p.screen-target.screen-target-color {
 }
 
 .answer-line b {
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: bottom;
+  white-space: nowrap;
   font-size: 2.1rem;
   color: var(--blue);
 }
@@ -939,7 +943,7 @@ p.screen-target.screen-target-color {
 .total-pill b {
   font-family: var(--display);
   font-weight: 400;
-  font-size: 1.9rem;
+  font-size: 1.73em;
   color: var(--mix);
   margin: 0 2px;
 }
@@ -3103,4 +3107,116 @@ label.check {
   gap: 8px;
   margin-top: 12px;
   font-weight: 700;
+}
+
+/* ---- phone: keeping everything on the screen (see fit.ts) ---- */
+
+/* Numbers and short labels never break across lines; they shrink instead. */
+.points,
+.total-pill {
+  display: block;
+  max-width: 100%;
+  white-space: nowrap;
+}
+
+.burst-value {
+  max-width: 100%;
+}
+
+/* While answering, the question, the dial and the button fit on one screen.
+   The dial keeps at least a quarter of the screen; the prompt takes the room
+   left over and its text shrinks to fit (fit.ts). On screens under ~650px tall
+   (a phone held sideways, old small phones) the page scrolls a little. */
+.phone:has(.answering) {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+}
+
+.phone-round.answering {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Q番号 and the prompt sit directly in the column, so only the prompt shrinks */
+.answering .q-head {
+  display: contents;
+}
+
+.answering .q-no {
+  align-self: flex-start;
+}
+
+.answering .q-prompt {
+  flex: 0 20 auto;
+  min-height: 2.2em;
+  max-height: 34dvh;
+}
+
+.answering .dial-card {
+  flex: 0 1 auto;
+  min-height: calc(max(140px, 25dvh) + 64px);
+  display: flex;
+  flex-direction: column;
+}
+
+.answering .dial-card .dial {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.answering .submitted {
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 16px;
+}
+
+.answering .submitted .big {
+  white-space: nowrap;
+  font-size: 1.5rem;
+}
+
+.answering .hint {
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+@media (max-height: 760px) {
+  .phone:has(.answering) {
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+
+  .phone-round.answering {
+    gap: 10px;
+    padding-top: 10px;
+  }
+
+  .answering .countdown {
+    gap: 2px;
+  }
+
+  .answering .countdown-secs {
+    font-size: 1.3em;
+  }
+
+  .answering .countdown-bar {
+    height: 10px;
+  }
+
+  .answering .nudge button {
+    width: 52px;
+    height: 52px;
+  }
+
+  .phone-round.answering > button.primary {
+    min-height: 54px;
+  }
+}
+
+@media (max-height: 700px) {
+  .answering .hint {
+    display: none;
+  }
 }

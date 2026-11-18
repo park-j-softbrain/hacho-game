@@ -10,7 +10,8 @@
     "deploy": "npm run build && wrangler deploy",
     "typecheck": "tsc -b",
     "test": "vitest run",
-    "check:screen": "node scripts/check-screen.mjs"
+    "check:screen": "node scripts/check-layout.mjs screen",
+    "check:phone": "node scripts/check-layout.mjs phone"
   },
   "dependencies": {
     "preact": "^11.1.0",

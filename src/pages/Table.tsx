@@ -4,7 +4,8 @@ import { type Extreme, GROUP_NAMES, type View, fractionOf, snap } from "../../sh
 import { Dial, Ends, Shown, fmt, fmtOn } from "../Dial";
 import { serverNow, useGame, useTick } from "../net";
 import { click, play, useSound } from "../sound";
-import { Banner, Burst, Center, Countdown } from "../ui";
+import { useFitText } from "../fit";
+import { Banner, Burst, Center, Countdown, Fit } from "../ui";
 
 export function TablePage({ n, k }: { n: number; k: string }) {
   const { view, status, fatal, error, send } = useGame(
@@ -110,18 +111,18 @@ function Body({
         <div class="phone-round">
           <Burst label="今回の点数（ズレ）">
             {me.answer ? (
-              <span class="points">
+              <Fit class="points">
                 {fmt(points ?? 0)}
                 <small>点</small>
-              </span>
+              </Fit>
             ) : (
               <span class="points points-none">回答なし</span>
             )}
           </Burst>
           {result.ranks[me.n] != null && (
-            <p class="total-pill">
+            <Fit tag="p" class="total-pill">
               今回 <b>{result.ranks[me.n]}</b>位
-            </p>
+            </Fit>
           )}
           <DialCard>
             <Dial
@@ -133,7 +134,10 @@ function Body({
             <Ends left={view.question!.left} right={view.question!.right} />
           </DialCard>
           <p class="answer-line">
-            正解は <b class="display print"><Shown scale={sc} v={result.target} /></b>
+            正解は{" "}
+            <Fit tag="b" class="display print">
+              <Shown scale={sc} v={result.target} />
+            </Fit>
             {me.answer && (
               <span class="answer-mine">（あなたの回答: <Shown scale={sc} v={me.answer.v} />）</span>
             )}
@@ -142,14 +146,14 @@ function Body({
           {me.answer && points != null && <Spread best={result.best} worst={result.worst} mine={points} />}
           {view.secret ? (
             me.group != null && (
-              <p class="total-pill">
+              <Fit tag="p" class="total-pill">
                 いまのグループ <b>{GROUP_NAMES[me.group]}</b>
-              </p>
+              </Fit>
             )
           ) : (
-            <p class="total-pill">
+            <Fit tag="p" class="total-pill">
               合計 <b>{fmt(me.score)}</b>点・<b>{me.rank}</b>位
-            </p>
+            </Fit>
           )}
         </div>
       );
@@ -161,14 +165,14 @@ function Body({
       return (
         <Center>
           <Burst label={view.final ? "最終結果" : "現在の順位"}>
-            <span class="points">
+            <Fit class="points">
               {me.rank}
               <small>位</small>
-            </span>
+            </Fit>
           </Burst>
-          <p class="total-pill">
+          <Fit tag="p" class="total-pill">
             <b>{fmt(me.score)}</b>点・{view.tables.length}チーム中
-          </p>
+          </Fit>
           <p class="small">ズレの合計が少ないほど上位です</p>
           {me.rank > 1 && <p class="big">{chase(view, me.score)}</p>}
           <p>スクリーンをご覧ください</p>
@@ -227,7 +231,7 @@ function Answering({ view, send }: { view: View; send: Send }) {
   };
 
   return (
-    <div class="phone-round">
+    <div class="phone-round answering">
       <QuestionHead view={view} />
       <Countdown startedAt={view.startedAt} deadline={view.deadline} />
       <DialCard>
@@ -244,9 +248,9 @@ function Answering({ view, send }: { view: View; send: Send }) {
         <button onClick={() => nudge(-1)} disabled={locked} aria-label="左へ">
           <Chevron d="M15 5 L8 12 L15 19" />
         </button>
-        <span class={`nudge-value${sc.band ? " nudge-color" : shown.length > 7 ? " longer" : shown.length > 4 ? " long" : ""}`}>
+        <Fit class={`nudge-value${sc.band ? " nudge-color" : shown.length > 7 ? " longer" : shown.length > 4 ? " long" : ""}`}>
           <Shown scale={sc} v={pos} />
-        </span>
+        </Fit>
         <button onClick={() => nudge(1)} disabled={locked} aria-label="右へ">
           <Chevron d="M9 5 L16 12 L9 19" />
         </button>
@@ -333,7 +337,7 @@ function GroupNow({ view, onRename }: { view: View; onRename: () => void }) {
       <Burst label="いまのグループ">
         <span class="display group-burst">{g == null ? "―" : GROUP_NAMES[g]}</span>
       </Burst>
-      {same > 1 && <p class="total-pill">{same}チームがこのグループ</p>}
+      {same > 1 && <Fit tag="p" class="total-pill">{same}チームがこのグループ</Fit>}
       {moved && <p class="big">{moved}</p>}
       <p class="small">合計のズレが近いチームどうしで分けています。順位は最後の結果発表で分かります</p>
       <p>スクリーンをご覧ください</p>
@@ -389,26 +393,28 @@ function PhoneFinale({ view }: { view: View }) {
   return (
     <Center>
       <Burst label="最終結果">
-        <span class="points">
+        <Fit class="points">
           {me.rank}
           <small>位</small>
-        </span>
+        </Fit>
       </Burst>
       <p class="big display">{me.rank <= 3 ? "おめでとうございます！" : "おつかれさまでした！"}</p>
-      <p class="total-pill">
+      <Fit tag="p" class="total-pill">
         <b>{fmt(me.score)}</b>点・{view.tables.length}チーム中
-      </p>
+      </Fit>
     </Center>
   );
 }
 
 function QuestionHead({ view }: { view: View }) {
+  // shrinks when a long prompt would push the dial and the button off the screen
+  const prompt = useFitText<HTMLHeadingElement>(view.question!.prompt, "height", 0.45);
   return (
     <div class="q-head">
       <span class="q-no">
         Q{view.qNo} / {view.qCount}
       </span>
-      <h2 class="q-prompt">{view.question!.prompt}</h2>
+      <h2 class="q-prompt" ref={prompt}>{view.question!.prompt}</h2>
     </div>
   );
 }

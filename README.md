@@ -34,6 +34,7 @@ npm run dev          # http://localhost:5173  (admin password: "dev", from .dev.
 npm test             # game-rule tests
 npm run typecheck
 npm run check:screen # projector layout at 8 window sizes (resets the local game; needs dev running and Chrome)
+npm run check:phone  # phone layout at 8 phone sizes (same)
 ```
 
 `npm run dev` also prints a `Network:` URL. Open the admin page and the QR page
@@ -95,6 +96,10 @@ the same layout. Text whose length depends on the questions or team names (the a
 the prompt, names, numbers) shrinks to fit its box (`src/fit.ts`) instead of pushing the
 layout apart. `npm run check:screen` drives every phase with long content and reports
 anything that leaves the stage or overlaps.
+
+On a phone, numbers and short labels never break across lines, and while answering
+the question, the dial and the 回答 button fit on one screen: the prompt shrinks first,
+the dial keeps at least a quarter of the screen. `npm run check:phone` checks this.
 
 ## Layout
 

@@ -6,7 +6,7 @@ import { useLayoutEffect, useRef } from "preact/hooks";
 
 // Shrinks the element's font until its text fits its own box: its width, or
 // with "height" (text that may wrap) its height.
-export function useFitText<T extends HTMLElement>(key: unknown, axis: "width" | "height" = "width", min = 0.3) {
+export function useFitText<T extends HTMLElement>(key?: unknown, axis: "width" | "height" = "width", min = 0.3) {
   const ref = useRef<T>(null);
   useLayoutEffect(() => {
     const el = ref.current;
@@ -64,8 +64,8 @@ export function useFitChildren<T extends HTMLElement>(key: unknown) {
   return ref;
 }
 
-// Runs fit now, when the web fonts arrive, and when the box around the element
-// changes size (window resized, a neighbour grew).
+// Runs fit now, when the web fonts arrive, when the box around the element
+// changes size (window resized, a neighbour grew), and when its text changes.
 function watch(el: HTMLElement, fit: () => void): () => void {
   let frame = 0;
   const later = () => {
@@ -76,10 +76,13 @@ function watch(el: HTMLElement, fit: () => void): () => void {
   void document.fonts?.ready.then(later);
   const ro = new ResizeObserver(later);
   ro.observe(el.parentElement ?? el);
+  const mo = new MutationObserver(later);
+  mo.observe(el, { childList: true, subtree: true, characterData: true });
   window.addEventListener("resize", later);
   return () => {
     cancelAnimationFrame(frame);
     ro.disconnect();
+    mo.disconnect();
     window.removeEventListener("resize", later);
   };
 }

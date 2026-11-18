@@ -1,5 +1,6 @@
 import type { ComponentChildren } from "preact";
 import { useId } from "preact/hooks";
+import { useFitText } from "./fit";
 import { serverNow, useTick, type Status } from "./net";
 
 export function Center({ children }: { children: ComponentChildren }) {
@@ -91,3 +92,21 @@ export const PHASE_LABEL = {
   scores: "スコア表示中",
   finale: "最終結果発表",
 } as const;
+
+// A line of text that shrinks to fit its box instead of overflowing (see fit.ts).
+export function Fit({
+  tag: Tag = "span",
+  class: cls,
+  children,
+}: {
+  tag?: "span" | "p" | "b";
+  class?: string;
+  children: ComponentChildren;
+}) {
+  const ref = useFitText<HTMLElement>();
+  return (
+    <Tag class={cls} ref={ref as never}>
+      {children}
+    </Tag>
+  );
+}
