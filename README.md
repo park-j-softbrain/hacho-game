@@ -82,7 +82,7 @@ npm run build && npx wrangler deploy --durable-objects-code-update-mode immediat
 - **A phone dies:** scan the same table card with another phone.
 - **Time runs out too early:** use **+15秒** while answers are open, or start the question again from 問題一覧. Playing a question again replaces its earlier points.
 - **A page says アクセスが多すぎます:** the server's rate limits were hit (20 wrong passwords or QR codes from one address in a minute, or far more requests than the app sends). Wait a minute and reload. The limits are at the top of `worker/game.ts`.
-- **A score needs fixing:** use the **+1 / −1** buttons in スコア. Team names can be changed there too.
+- **A score needs fixing:** use the **+1 / −1** buttons in スコア, or click the score and type the new total (Enter saves, Esc cancels). Team names can be changed there too.
 
 ## Look
 

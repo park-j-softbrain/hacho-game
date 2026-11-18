@@ -1,4 +1,4 @@
-import { useState } from "preact/hooks";
+import { useRef, useState } from "preact/hooks";
 import {
   DEFAULT_SECONDS,
   DEFAULT_WORTH,
@@ -390,6 +390,7 @@ function Answers({ view }: { view: View }) {
 
 function Scores({ view, send }: { view: View; send: Send }) {
   const rows = [...view.tables].sort((a, b) => a.rank - b.rank || a.n - b.n);
+  const [editing, setEditing] = useState<number | null>(null);
   return (
     <section class="panel admin-scores">
       <h2>スコア<span class="answers-target">ズレの合計。少ないほど上位{view.secret && "（スクリーンとスマホには非表示）"}</span></h2>
@@ -411,9 +412,20 @@ function Scores({ view, send }: { view: View; send: Send }) {
             >
               {t.name}
             </button>
-            <span class="score-points">
-              <b class="display">{fmt(t.score)}</b>点
-            </span>
+            {editing === t.n ? (
+              <ScoreInput
+                name={t.name}
+                score={t.score}
+                onDone={(score) => {
+                  setEditing(null);
+                  if (score !== null && score !== t.score) send({ t: "setScore", n: t.n, score });
+                }}
+              />
+            ) : (
+              <button class="score-points" title="点数を直接入力" onClick={() => setEditing(t.n)}>
+                <b class="display">{fmt(t.score)}</b>点
+              </button>
+            )}
             <button
               class="round"
               aria-label={`${t.name} −1点`}
@@ -431,8 +443,45 @@ function Scores({ view, send }: { view: View; send: Send }) {
           </li>
         ))}
       </ol>
-      <p class="small">チーム名を押すと名前を変更できます</p>
+      <p class="small">チーム名を押すと名前を、点数を押すと点数を直接変更できます</p>
     </section>
+  );
+}
+
+// Enter or leaving the field saves, Esc cancels. An empty or unreadable value changes nothing.
+function ScoreInput({ name, score, onDone }: { name: string; score: number; onDone: (score: number | null) => void }) {
+  const done = useRef(false);
+  const finish = (v: number | null) => {
+    if (done.current) return;
+    done.current = true;
+    onDone(v);
+  };
+  const read = (el: HTMLInputElement) => {
+    const v = Number(el.value.trim().replace(/[０-９．－]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).replace("ー", "-"));
+    return el.value.trim() === "" || !Number.isFinite(v) ? null : v;
+  };
+  return (
+    <span class="score-points score-edit">
+      <input
+        class="display"
+        type="text"
+        inputMode="decimal"
+        aria-label={`${name}の点数`}
+        defaultValue={String(score)}
+        ref={(el) => {
+          if (el && document.activeElement !== el) {
+            el.focus();
+            el.select();
+          }
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.isComposing) finish(read(e.currentTarget));
+          if (e.key === "Escape") finish(null);
+        }}
+        onBlur={(e) => finish(read(e.currentTarget))}
+      />
+      点
+    </span>
   );
 }
 

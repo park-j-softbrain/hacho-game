@@ -1993,6 +1993,31 @@ html:has(body[data-page="qr"]) {
   font-size: 1.25rem;
 }
 
+button.score-points {
+  padding: 2px 6px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: inherit;
+  cursor: text;
+}
+
+button.score-points:hover {
+  background: rgba(50, 85, 164, 0.1);
+  text-decoration: underline dotted;
+}
+
+.score-edit input {
+  width: 4.2em;
+  padding: 1px 5px;
+  border: 2.5px solid var(--mix);
+  border-radius: 8px;
+  outline: none;
+  font-size: 1.1rem;
+  font-weight: 700;
+  text-align: right;
+}
+
 button.round {
   flex: none;
   width: 44px;

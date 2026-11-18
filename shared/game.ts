@@ -326,6 +326,7 @@ export type AdminMsg =
   | { t: "settings"; title?: string; tableCount?: number; hideTotals?: boolean }
   | { t: "rename"; n: number; name: string }
   | { t: "adjust"; n: number; delta: number }
+  | { t: "setScore"; n: number; score: number }
   | { t: "questions"; questions: QuestionInput[] }
   | { t: "addQuestion"; question: QuestionInput }
   | { t: "updateQuestion"; id: string; question: QuestionInput }
@@ -420,6 +421,14 @@ export function applyAdmin(s: GameState, m: AdminMsg, now: number): string | und
     case "adjust":
       s.adjust[m.n] = (s.adjust[m.n] ?? 0) + clampInt(m.delta, -100, 100);
       return;
+    case "setScore": {
+      // Sets the table's total by changing its manual adjustment, against the latest results.
+      if (typeof m.score !== "number" || !Number.isFinite(m.score)) return "点数が読み取れませんでした";
+      if (!tableNumbers(s).includes(m.n)) return "そのテーブルはありません";
+      const target = round1(Math.min(Math.max(m.score, -100000), 100000));
+      s.adjust[m.n] = round1((s.adjust[m.n] ?? 0) + target - scoreOf(s, m.n));
+      return;
+    }
     case "questions": {
       if (s.phase === "open" || s.phase === "closed") return "出題中は問題を差し替えられません";
       if (!Array.isArray(m.questions)) return "問題が1つもありません";

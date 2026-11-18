@@ -159,6 +159,20 @@ describe("a round", () => {
     expect(standings(s).find((r) => r.n === 2)!.score).toBe(75.5); // not summed twice
   });
 
+  it("sets a table's total from the admin page, keeping it right as later rounds are scored", () => {
+    const s = started();
+    applyTable(s, 1, { t: "submit", v: 75 }, 1000);
+    applyAdmin(s, { t: "reveal" }, 2000);
+    expect(applyAdmin(s, { t: "setScore", n: 1, score: 10 }, 3000)).toBeUndefined();
+    expect(standings(s).find((r) => r.n === 1)!.score).toBe(10);
+    expect(s.adjust[1]).toBe(9.5);
+    applyAdmin(s, { t: "adjust", n: 1, delta: 1 }, 3100);
+    expect(standings(s).find((r) => r.n === 1)!.score).toBe(11);
+    expect(applyAdmin(s, { t: "setScore", n: 1, score: Number.NaN }, 3200)).toBeTruthy();
+    expect(applyAdmin(s, { t: "setScore", n: 9, score: 5 }, 3200)).toBeTruthy();
+    expect(standings(s).find((r) => r.n === 1)!.score).toBe(11);
+  });
+
   it("rejects junk from a phone", () => {
     const s = started();
     expect(applyTable(s, 1, { t: "submit", v: "abc" as unknown as number }, 1000)).toBeTruthy();
